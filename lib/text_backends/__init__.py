@@ -43,3 +43,8 @@ from lib.providers import PROVIDER_OPENAI
 from lib.text_backends.openai import OpenAITextBackend
 
 register_backend(PROVIDER_OPENAI, OpenAITextBackend)
+
+from lib.providers import PROVIDER_FILMATE
+from lib.text_backends.filmate import FilmateTextBackend
+
+register_backend(PROVIDER_FILMATE, FilmateTextBackend)

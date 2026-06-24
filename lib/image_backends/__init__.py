@@ -61,3 +61,13 @@ from lib.image_backends.kling import KlingImageBackend
 from lib.providers import PROVIDER_KLING
 
 register_backend(PROVIDER_KLING, KlingImageBackend)
+
+from lib.image_backends.runningHub import RunningHubImageBackend
+from lib.providers import PROVIDER_RUNNINGHUB
+
+register_backend(PROVIDER_RUNNINGHUB, RunningHubImageBackend)
+
+from lib.image_backends.filmate import FilmateImageBackend
+from lib.providers import PROVIDER_FILMATE
+
+register_backend(PROVIDER_FILMATE, FilmateImageBackend)

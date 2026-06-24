@@ -12,6 +12,8 @@ MESSAGES: dict[str, str] = {
     "provider_name_dashscope": "Alibaba Model Studio",
     "provider_name_minimax": "MiniMax",
     "provider_name_kling": "Kling",
+    "provider_name_filmate": "Filmate",
+    "provider_name_runningHub": "RunningHub",
     # Provider descriptions
     "provider_desc_gemini-aistudio": "Google AI Studio cung cấp các mô hình Gemini hỗ trợ tạo ảnh và video, phù hợp cho việc dựng prototype nhanh và dự án cá nhân.",
     "provider_desc_gemini-vertex": "Nền tảng doanh nghiệp Vertex AI của Google Cloud hỗ trợ các mô hình Gemini và Imagen với hạn mức cao hơn cùng khả năng tạo âm thanh.",
@@ -28,4 +30,6 @@ MESSAGES: dict[str, str] = {
     "preset_notes_xiaomi_mimo": "Xiaomi MiMo chỉ chấp nhận tên model đã biết; không có danh sách model công khai.",
     "preset_notes_ark_coding_plan": "Gói Volcengine Ark Coding Plan",
     "preset_notes_ark_agent_plan": "Gói Volcengine Ark Agent Plan",
+    "provider_desc_filmate": "Filmate là một nền tảng tạo video dựa trên mô hình Seedance 2.0, hỗ trợ chuyển đổi văn bản thành hình ảnh, hình ảnh thành hình ảnh, văn bản thành video và tạo video đa phương thức.",
+    "provider_desc_runningHub": "RunningHub là một nền tảng tạo video dựa trên mô hình Seedance 2.0, hỗ trợ chuyển đổi văn bản thành hình ảnh, hình ảnh thành hình ảnh, văn bản thành video và tạo video đa phương thức.",
 }

@@ -1130,6 +1130,109 @@ PROVIDER_REGISTRY: dict[str, ProviderMeta] = {
         },
         default_base_url="https://api.klingai.com/v1",
     ),
+    "runningHub": ProviderMeta(
+        display_name="RunningHub",
+        description="RunningHub 视频生成平台，基于 Seedance 2.0 模型，支持文生图、图生图、文生视频与多模态生视频。",
+        required_keys=["api_key"],
+        optional_keys=["image_max_workers", "video_max_workers"],
+        secret_keys=["api_key"],
+        models={
+            # --- image ---
+            "rhart-image-g-2-official": ModelInfo(
+                display_name="RHart Image G2 Official",
+                media_type="image",
+                capabilities=["text_to_image", "image_to_image"],
+                default=True,
+                resolutions=["1K", "2K", "4K"],
+            ),
+            # --- video ---
+            "sparkvideo-2.0-fast": ModelInfo(
+                display_name="SparkVideo 2.0 Fast",
+                media_type="video",
+                capabilities=["text_to_video", "generate_audio", "seed_control"],
+                default=True,
+                supported_durations=list(range(1, 11)),
+                resolutions=["480p", "720p", "1080p"],
+            ),
+            "sparkvideo-2.0": ModelInfo(
+                display_name="SparkVideo 2.0",
+                media_type="video",
+                capabilities=["text_to_video", "image_to_video", "generate_audio", "seed_control"],
+                supported_durations=list(range(1, 11)),
+                resolutions=["480p", "720p", "1080p"],
+            ),
+            "sparkvideo-2.0-multimodal": ModelInfo(
+                display_name="SparkVideo 2.0 Multimodal",
+                media_type="video",
+                capabilities=["image_to_video", "generate_audio", "seed_control"],
+                supported_durations=list(range(1, 11)),
+                resolutions=["480p", "720p", "1080p"],
+            ),
+        },
+    ),
+    "filmate": ProviderMeta(
+        display_name="Filmate",
+        description="Filmate 视频生成平台，基于 Seedance 2.0 和 GPT Image 模型，支持文生图、图生图、文生视频与多模态生视频。",
+        required_keys=["api_key"],
+        optional_keys=["base_url", "image_max_workers", "video_max_workers", "text_max_workers"],
+        secret_keys=["api_key"],
+        default_base_url="https://sk.aistore777.top/api/v1",
+        models={
+            # --- text ---
+            "Gemini 3.1 Pro": ModelInfo(
+                display_name="Gemini 3.1 Pro",
+                media_type="text",
+                capabilities=["text_generation", "structured_output", "vision"],
+                default=True,
+            ),
+            # --- image ---
+            "GPT image2": ModelInfo(
+                display_name="GPT Image 2",
+                media_type="image",
+                capabilities=["text_to_image", "image_to_image"],
+                default=True,
+                resolutions=["1K", "2K", "4K"],
+            ),
+            # --- video ---
+            "Seedance 2.0 标准": ModelInfo(
+                display_name="Seedance 2.0 标准",
+                media_type="video",
+                capabilities=["text_to_video", "image_to_video", "seed_control"],
+                default=True,
+                supported_durations=[4, 8, 10, 12, 15],
+                resolutions=["480p", "720p", "1080p"],
+            ),
+            "Seedance 2.0 Fast": ModelInfo(
+                display_name="Seedance 2.0 Fast",
+                media_type="video",
+                capabilities=["text_to_video", "image_to_video", "seed_control"],
+                supported_durations=[4, 8, 10, 12, 15],
+                resolutions=["480p", "720p"],
+            ),
+            # --- video ---
+            "Happy Horse": ModelInfo(
+                display_name="Happy Horse",
+                media_type="video",
+                capabilities=["text_to_video", "image_to_video", "first_last_frame"],
+                supported_durations=[5, 10, 15],
+                resolutions=["720p", "1080p"],
+            ),
+            "SD2.0 fast 优惠版": ModelInfo(
+                display_name="SD2.0 Fast 优惠版",
+                media_type="video",
+                capabilities=["text_to_video", "image_to_video", "seed_control"],
+                supported_durations=list(range(4, 16)),
+                resolutions=["720p"],
+            ),
+            "SD2.0 标准 优惠版": ModelInfo(
+                display_name="SD2.0 标准 优惠版",
+                media_type="video",
+                capabilities=["text_to_video", "image_to_video", "seed_control"],
+                supported_durations=list(range(4, 16)),
+                resolutions=["720p"],
+            ),
+        },
+    ),
 }
 
 

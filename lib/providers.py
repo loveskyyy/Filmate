@@ -13,6 +13,8 @@ PROVIDER_DASHSCOPE = "dashscope"
 PROVIDER_MINIMAX = "minimax"
 PROVIDER_KLING = "kling"
 PROVIDER_ANTHROPIC = "anthropic"
+PROVIDER_RUNNINGHUB = "runningHub"
+PROVIDER_FILMATE = "filmate"
 
 CallType = Literal["image", "video", "text", "audio"]
 CALL_TYPE_IMAGE: CallType = "image"

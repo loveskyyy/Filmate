@@ -105,3 +105,4 @@ deploy/production/projects/
 deploy/production/vertex_keys/
 deploy/production/claude_data/
 deploy/production/pgdata/
+".ruff_cache/" 

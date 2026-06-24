@@ -81,3 +81,15 @@ from lib.providers import PROVIDER_KLING  # noqa: E402
 from lib.video_backends.kling import KlingVideoBackend  # noqa: E402
 
 register_backend(PROVIDER_KLING, KlingVideoBackend)
+
+# Filmate
+from lib.providers import PROVIDER_FILMATE
+from lib.video_backends.filmate import FilmateVideoBackend
+
+register_backend(PROVIDER_FILMATE, FilmateVideoBackend)
+
+
+from lib.providers import PROVIDER_RUNNINGHUB  # noqa: E402
+from lib.video_backends.runningHub import RunningHubVideoBackend  # noqa: E402
+
+register_backend(PROVIDER_RUNNINGHUB, RunningHubVideoBackend)

@@ -12,6 +12,8 @@ MESSAGES: dict[str, str] = {
     "provider_name_dashscope": "阿里百炼",
     "provider_name_minimax": "MiniMax",
     "provider_name_kling": "可灵 Kling",
+    "provider_name_filmate": "Filmate",
+    "provider_name_runningHub": "RunningHub",
     # Provider descriptions
     "provider_desc_gemini-aistudio": "Google AI Studio 提供 Gemini 系列模型，支持图片和视频生成，适合快速原型和个人项目。",
     "provider_desc_gemini-vertex": "Google Cloud Vertex AI 企业级平台，支持 Gemini 和 Imagen 模型，提供更高配额和音频生成能力。",
@@ -28,4 +30,6 @@ MESSAGES: dict[str, str] = {
     "preset_notes_xiaomi_mimo": "小米 MiMo 仅支持已知模型名，未公开模型列表",
     "preset_notes_ark_coding_plan": "火山方舟 Coding Plan 套餐",
     "preset_notes_ark_agent_plan": "火山方舟 Agent Plan 套餐",
+    "provider_desc_filmate": "Filmate 视频生成平台，基于 Seedance 2.0 模型，支持文生图、图生图、文生视频与多模态生视频。",
+    "provider_desc_runningHub": "RunningHub 视频生成平台，基于 Seedance 2.0 模型，支持文生图、图生图、文生视频与多模态生视频。",
 }

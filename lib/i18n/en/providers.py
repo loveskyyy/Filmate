@@ -12,6 +12,8 @@ MESSAGES: dict[str, str] = {
     "provider_name_dashscope": "Alibaba Model Studio",
     "provider_name_minimax": "MiniMax",
     "provider_name_kling": "Kling",
+    "provider_name_filmate": "Filmate",
+    "provider_name_runningHub": "RunningHub",
     # Provider descriptions
     "provider_desc_gemini-aistudio": "Google AI Studio provides Gemini models with image and video generation, ideal for rapid prototyping and personal projects.",
     "provider_desc_gemini-vertex": "Google Cloud Vertex AI enterprise platform supporting Gemini and Imagen models with higher quotas and audio generation.",
@@ -28,4 +30,6 @@ MESSAGES: dict[str, str] = {
     "preset_notes_xiaomi_mimo": "Xiaomi MiMo only accepts known model names; no public model list.",
     "preset_notes_ark_coding_plan": "Volcengine Ark Coding Plan",
     "preset_notes_ark_agent_plan": "Volcengine Ark Agent Plan",
+    "provider_desc_filmate": "Filmate is a video generation platform based on the Seedance 2.0 model, supporting text-to-image, image-to-image, text-to-video, and multimodal video generation.",
+    "provider_desc_runningHub": "RunningHub is a video generation platform based on the Seedance 2.0 model, supporting text-to-image, image-to-image, text-to-video, and multimodal video generation.",
 }
