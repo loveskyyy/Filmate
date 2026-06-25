@@ -335,7 +335,7 @@ PROVIDER_SPEC_REGISTRY.update(
 # 简单文本三家（registry_backend = provider_id 自身）；gemini 两个 provider_id 按 backend 分两行
 # （aistudio/vertex 各自闭包，registry_backend 同为 "gemini"）；OpenAI-compat 三家都映射到 "openai"
 # registry backend，openai 直传用户 base_url，dashscope/minimax 经 helper 派生 + 透传 provider_name 计费归因。
-_TEXT_SIMPLE_PROVIDERS = ("ark", "ark-agent-plan", "grok")
+_TEXT_SIMPLE_PROVIDERS = ("ark", "ark-agent-plan", "grok", "filmate")
 PROVIDER_SPEC_REGISTRY.update({(p, "text"): _text_simple_spec(p) for p in _TEXT_SIMPLE_PROVIDERS})
 PROVIDER_SPEC_REGISTRY.update(
     {
