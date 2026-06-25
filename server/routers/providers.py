@@ -737,6 +737,21 @@ def _test_minimax(config: dict[str, str], _t: Callable[..., str]) -> ConnectionT
     )
 
 
+def _test_filmate(config: dict[str, str], _t: Callable[..., str]) -> ConnectionTestResponse:
+    """通过 models.list() 验证 Filmate API Key（OpenAI 兼容协议）。"""
+    from openai import OpenAI
+
+    base_url = config.get("base_url") or "https://sk.aistore777.top/api/v1"
+    client = OpenAI(api_key=config["api_key"], base_url=base_url)
+    models = client.models.list()
+    available = sorted(m.id for m in models.data)
+    return ConnectionTestResponse(
+        success=True,
+        available_models=available,
+        message=_t("connection_success"),
+    )
+
+
 _TEST_DISPATCH: dict[str, Callable[[dict[str, str], Any], ConnectionTestResponse]] = {
     "gemini-aistudio": _test_gemini_aistudio,
     "gemini-vertex": _test_gemini_vertex,
@@ -747,6 +762,7 @@ _TEST_DISPATCH: dict[str, Callable[[dict[str, str], Any], ConnectionTestResponse
     "vidu": _test_vidu,
     "dashscope": _test_dashscope,
     "minimax": _test_minimax,
+    "filmate": _test_filmate,
 }
 
 
