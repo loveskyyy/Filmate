@@ -744,7 +744,7 @@ def _test_filmate(config: dict[str, str], _t: Callable[..., str]) -> ConnectionT
     base_url = config.get("base_url") or "https://sk.aistore777.top/api/v1"
     client = OpenAI(api_key=config["api_key"], base_url=base_url)
     models = client.models.list()
-    available = sorted(m.id for m in models.data)
+    available = sorted(m.id for m in (models.data or []) if m.id)
     return ConnectionTestResponse(
         success=True,
         available_models=available,
