@@ -98,8 +98,14 @@ class FilmateImageBackend(ImageBackend):
 
         response = await self._client.images.generate(**kwargs)
 
+        logger.info("Filmate 图片生成响应: %s", response)
+
         # 获取图片 URL
-        image_url = response.data[0].url
+        if not response.data:
+            raise RuntimeError(f"Filmate 图片生成返回空数据: {response}")
+
+        image_data = response.data[0]
+        image_url = image_data.url or image_data.b64_json
         if not image_url:
             raise RuntimeError(f"Filmate 图片生成返回空 URL: {response}")
 
