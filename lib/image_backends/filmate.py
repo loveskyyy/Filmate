@@ -120,8 +120,9 @@ class FilmateImageBackend(ImageBackend):
 
         # 提交任务
         logger.info(
-            "提交 Filmate 图片生成任务 (T2I) kwargs=%s",
+            "提交 Filmate 图片生成任务 (T2I) kwargs=%s, base_url=%s",
             format_kwargs_for_log(payload),
+            self._base_url,
         )
 
         submit_url = f"{self._base_url}/images/generations"
