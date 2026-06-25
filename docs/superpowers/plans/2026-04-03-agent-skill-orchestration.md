@@ -14,26 +14,27 @@
 
 ## File Map
 
-| 操作 | 文件 | 职责 |
-|------|------|------|
-| **新建** | `agent_runtime_profile/.claude/agents/generate-assets.md` | 统一资产生成 subagent 定义 |
-| **修改** | `agent_runtime_profile/.claude/settings.json` | 删除幽灵 skill 权限行 |
-| **修改** | `agent_runtime_profile/CLAUDE.md` | 修正 agent 名称、去除重复内容模式表、更新架构图和工作流 |
-| **修改** | `agent_runtime_profile/.claude/skills/manga-workflow/SKILL.md` | 重写阶段 5-8 dispatch、统一路径、修正 reference 引用 |
-| **修改** | `agent_runtime_profile/.claude/agents/analyze-characters-clues.md` | 修正脚本调用方式、统一路径 |
-| **修改** | `agent_runtime_profile/.claude/agents/create-episode-script.md` | 统一脚本路径 |
-| **修改** | `agent_runtime_profile/.claude/agents/normalize-drama-script.md` | 统一脚本路径 |
-| **修改** | `agent_runtime_profile/.claude/skills/generate-storyboard/SKILL.md` | 说明别名关系、修正 reference 路径 |
-| **修改** | `agent_runtime_profile/.claude/skills/generate-characters/SKILL.md` | 修正 reference 路径 |
-| **修改** | `agent_runtime_profile/.claude/skills/generate-clues/SKILL.md` | 修正 reference 路径 |
-| **修改** | `agent_runtime_profile/.claude/skills/generate-video/SKILL.md` | 修正 reference 路径 |
-| **修改** | `server/agent_runtime/session_manager.py` | 精简 Persona Prompt |
+| 操作     | 文件                                                                | 职责                                                    |
+| -------- | ------------------------------------------------------------------- | ------------------------------------------------------- |
+| **新建** | `agent_runtime_profile/.claude/agents/generate-assets.md`           | 统一资产生成 subagent 定义                              |
+| **修改** | `agent_runtime_profile/.claude/settings.json`                       | 删除幽灵 skill 权限行                                   |
+| **修改** | `agent_runtime_profile/CLAUDE.md`                                   | 修正 agent 名称、去除重复内容模式表、更新架构图和工作流 |
+| **修改** | `agent_runtime_profile/.claude/skills/manga-workflow/SKILL.md`      | 重写阶段 5-8 dispatch、统一路径、修正 reference 引用    |
+| **修改** | `agent_runtime_profile/.claude/agents/analyze-characters-clues.md`  | 修正脚本调用方式、统一路径                              |
+| **修改** | `agent_runtime_profile/.claude/agents/create-episode-script.md`     | 统一脚本路径                                            |
+| **修改** | `agent_runtime_profile/.claude/agents/normalize-drama-script.md`    | 统一脚本路径                                            |
+| **修改** | `agent_runtime_profile/.claude/skills/generate-storyboard/SKILL.md` | 说明别名关系、修正 reference 路径                       |
+| **修改** | `agent_runtime_profile/.claude/skills/generate-characters/SKILL.md` | 修正 reference 路径                                     |
+| **修改** | `agent_runtime_profile/.claude/skills/generate-clues/SKILL.md`      | 修正 reference 路径                                     |
+| **修改** | `agent_runtime_profile/.claude/skills/generate-video/SKILL.md`      | 修正 reference 路径                                     |
+| **修改** | `server/agent_runtime/session_manager.py`                           | 精简 Persona Prompt                                     |
 
 ---
 
 ### Task 1: 清理 settings.json 幽灵权限
 
 **Files:**
+
 - Modify: `agent_runtime_profile/.claude/settings.json:29`
 
 **Fixes:** #2
@@ -64,6 +65,7 @@ git commit -m "fix: 删除 settings.json 中不存在的 edit-script-items 权�
 ### Task 2: 新建 generate-assets agent 定义
 
 **Files:**
+
 - Create: `agent_runtime_profile/.claude/agents/generate-assets.md`
 
 **Fixes:** #4, #7
@@ -83,6 +85,7 @@ description: "统一资产生成 subagent。接收任务清单（资产类型、
 ## 任务定义
 
 **输入**：主 agent 会在 dispatch prompt 中提供：
+
 - 项目名称和项目路径
 - 任务类型（characters / clues / storyboard / video）
 - 脚本命令（一条或多条，格式已匹配 settings.json allow 规则）
@@ -95,12 +98,14 @@ description: "统一资产生成 subagent。接收任务清单（资产类型、
 ### Step 1: 读取项目状态
 
 使用 Read 工具读取项目的 `project.json`，记录：
+
 - 项目名称、内容模式、视觉风格
 - 已有的角色/线索/剧本状态（供验证使用）
 
 ### Step 2: 执行脚本命令
 
 按主 agent 提供的命令逐条执行：
+
 - 使用 Bash 工具运行每条命令
 - 如果某条命令失败，**记录错误信息，继续执行后续命令**
 - 不跳过、不自行决定跳过任何命令
@@ -120,20 +125,21 @@ description: "统一资产生成 subagent。接收任务清单（资产类型、
 - **BLOCKED**：无法执行（前置条件不满足，如缺少 project.json 或依赖文件）
 
 摘要格式：
-
 ```
+
 ## 资产生成完成
 
 **状态**: {DONE / DONE_WITH_CONCERNS / PARTIAL / BLOCKED}
 **任务类型**: {characters / clues / storyboard / video}
 
-| 项目 | 状态 | 备注 |
-|------|------|------|
-| {项1} | ✅ 成功 | |
-| {项2} | ❌ 失败 | {错误原因} |
+| 项目   | 状态    | 备注       |
+| ------ | ------- | ---------- |
+| {项 1} | ✅ 成功 |            |
+| {项 2} | ❌ 失败 | {错误原因} |
 
 {如果是 DONE_WITH_CONCERNS，列出 concerns}
 {如果是 BLOCKED，说明阻塞原因和建议}
+
 ```
 
 ## 注意事项
@@ -159,6 +165,7 @@ git commit -m "feat: 新建 generate-assets 统一资产生成 subagent 定义"
 ### Task 3: 修正 CLAUDE.md
 
 **Files:**
+
 - Modify: `agent_runtime_profile/CLAUDE.md:40-51, 77-87, 103-118, 120-136`
 
 **Fixes:** #1, #8
@@ -245,6 +252,7 @@ git commit -m "feat: 新建 generate-assets 统一资产生成 subagent 定义"
 - [ ] **Step 5: 验证**
 
 用 Read 工具通读修改后的 CLAUDE.md，确认：
+
 - 无 `novel-to-narration-script` / `novel-to-storyboard-script` 残留
 - 无 `general-purpose subagent` 残留
 - 无 `compose-video` / `最终合成` 残留
@@ -262,6 +270,7 @@ git commit -m "fix: 修正 CLAUDE.md agent 名称、去除重复内容模式表�
 ### Task 4: 重写 manga-workflow/SKILL.md
 
 **Files:**
+
 - Modify: `agent_runtime_profile/.claude/skills/manga-workflow/SKILL.md:39-175`
 
 **Fixes:** #4, #7, #9, #11
@@ -302,7 +311,7 @@ git commit -m "fix: 修正 CLAUDE.md agent 名称、去除重复内容模式表�
 
 将阶段 2 的脚本调用从 `cd` 模式改为相对路径：
 
-```diff
+````diff
 -3. 调用 `peek_split_point.py` 展示切分点附近上下文：
 -   ```bash
 -   cd projects/{project_name} && python ../../.claude/skills/manage-project/scripts/peek_split_point.py --source {源文件} --target {目标字数}
@@ -311,7 +320,7 @@ git commit -m "fix: 修正 CLAUDE.md agent 名称、去除重复内容模式表�
 +   ```bash
 +   python .claude/skills/manage-project/scripts/peek_split_point.py --source {源文件} --target {目标字数}
 +   ```
-```
+````
 
 同理修正 `split_episode.py` 的两处调用（dry-run 和实际执行）：
 
@@ -337,16 +346,17 @@ git commit -m "fix: 修正 CLAUDE.md agent 名称、去除重复内容模式表�
 ### subagent A — 角色设计
 
 **触发**：有角色缺少 character_sheet
-
 ```
+
 dispatch `generate-assets` subagent：
-  任务类型：characters
-  项目名称：{project_name}
-  项目路径：projects/{project_name}/
-  待生成项：{缺失角色名列表}
-  脚本命令：
-    python .claude/skills/generate-characters/scripts/generate_character.py --all
-  验证方式：重新读取 project.json，检查对应角色的 character_sheet 字段
+任务类型：characters
+项目名称：{project_name}
+项目路径：projects/{project_name}/
+待生成项：{缺失角色名列表}
+脚本命令：
+python .claude/skills/generate-characters/scripts/generate_character.py --all
+验证方式：重新读取 project.json，检查对应角色的 character_sheet 字段
+
 ```
 
 ### subagent B — 线索设计
@@ -354,14 +364,16 @@ dispatch `generate-assets` subagent：
 **触发**：有 importance=major 线索缺少 clue_sheet
 
 ```
+
 dispatch `generate-assets` subagent：
-  任务类型：clues
-  项目名称：{project_name}
-  项目路径：projects/{project_name}/
-  待生成项：{缺失线索名列表}
-  脚本命令：
-    python .claude/skills/generate-clues/scripts/generate_clue.py --all
-  验证方式：重新读取 project.json，检查对应线索的 clue_sheet 字段
+任务类型：clues
+项目名称：{project_name}
+项目路径：projects/{project_name}/
+待生成项：{缺失线索名列表}
+脚本命令：
+python .claude/skills/generate-clues/scripts/generate_clue.py --all
+验证方式：重新读取 project.json，检查对应线索的 clue_sheet 字段
+
 ```
 
 如果只有其中一个需要执行，只 dispatch 对应的一个。
@@ -376,13 +388,15 @@ dispatch `generate-assets` subagent：
 **dispatch `generate-assets` subagent**：
 
 ```
+
 dispatch `generate-assets` subagent：
-  任务类型：storyboard
-  项目名称：{project_name}
-  项目路径：projects/{project_name}/
-  脚本命令：
-    python .claude/skills/generate-storyboard/scripts/generate_storyboard.py episode_{N}.json
-  验证方式：重新读取 scripts/episode_{N}.json，检查各场景的 storyboard_image 字段
+任务类型：storyboard
+项目名称：{project*name}
+项目路径：projects/{project_name}/
+脚本命令：
+python .claude/skills/generate-storyboard/scripts/generate_storyboard.py episode*{N}.json
+验证方式：重新读取 scripts/episode\_{N}.json，检查各场景的 storyboard_image 字段
+
 ```
 
 ---
@@ -394,14 +408,17 @@ dispatch `generate-assets` subagent：
 **dispatch `generate-assets` subagent**：
 
 ```
+
 dispatch `generate-assets` subagent：
-  任务类型：video
-  项目名称：{project_name}
-  项目路径：projects/{project_name}/
-  脚本命令：
-    python .claude/skills/generate-video/scripts/generate_video.py episode_{N}.json --episode {N}
-  验证方式：重新读取 scripts/episode_{N}.json，检查各场景的 video_clip 字段
+任务类型：video
+项目名称：{project*name}
+项目路径：projects/{project_name}/
+脚本命令：
+python .claude/skills/generate-video/scripts/generate_video.py episode*{N}.json --episode {N}
+验证方式：重新读取 scripts/episode\_{N}.json，检查各场景的 video_clip 字段
+
 ```
+
 ```
 
 - [ ] **Step 5: 更新灵活入口章节**
@@ -411,6 +428,7 @@ dispatch `generate-assets` subagent：
 - [ ] **Step 6: 验证**
 
 用 Read 工具通读修改后的 SKILL.md，确认：
+
 - 无 `cd projects/` 前缀的脚本调用残留
 - 无 `general-purpose subagent` 残留
 - 无 `compose-video` / 阶段 9 / 阶段 10 残留
@@ -429,6 +447,7 @@ git commit -m "feat: 重写 manga-workflow 阶段 5-8，引入 generate-assets d
 ### Task 5: 修正 agent 定义（3 个文件）
 
 **Files:**
+
 - Modify: `agent_runtime_profile/.claude/agents/analyze-characters-clues.md:60`
 - Modify: `agent_runtime_profile/.claude/agents/create-episode-script.md:42`
 - Modify: `agent_runtime_profile/.claude/agents/normalize-drama-script.md:38`
@@ -439,14 +458,14 @@ git commit -m "feat: 重写 manga-workflow 阶段 5-8，引入 generate-assets d
 
 `add_characters_clues.py` 无项目名位置参数，从 cwd 自动检测。修正第 60 行左右的调用示例：
 
-```diff
+````diff
 -```bash
 -python .claude/skills/manage-project/scripts/add_characters_clues.py {项目名} \
 -  --characters '{
 +```bash
 +python .claude/skills/manage-project/scripts/add_characters_clues.py \
 +  --characters '{
-```
+````
 
 确保删除 `{项目名}` 位置参数，其余 `--characters` 和 `--clues` flag 不变。
 
@@ -454,27 +473,27 @@ git commit -m "feat: 重写 manga-workflow 阶段 5-8，引入 generate-assets d
 
 将第 42 行左右的脚本调用从 `cd` 模式改为相对路径：
 
-```diff
+````diff
 -```bash
 -cd projects/{项目名} && python ../../.claude/skills/generate-script/scripts/generate_script.py --episode {N}
 -```
 +```bash
 +python .claude/skills/generate-script/scripts/generate_script.py --episode {N}
 +```
-```
+````
 
 - [ ] **Step 3: 修正 normalize-drama-script.md 脚本路径**
 
 将第 38 行左右的脚本调用从 `cd` 模式改为相对路径：
 
-```diff
+````diff
 -```bash
 -cd projects/{项目名} && python ../../.claude/skills/generate-script/scripts/normalize_drama_script.py --episode {N} --source source/episode_{N}.txt
 -```
 +```bash
 +python .claude/skills/generate-script/scripts/normalize_drama_script.py --episode {N} --source source/episode_{N}.txt
 +```
-```
+````
 
 - [ ] **Step 4: 验证**
 
@@ -494,6 +513,7 @@ git commit -m "fix: 统一 agent 定义中的脚本调用路径，修正 add_cha
 ### Task 6: 修正 skill SKILL.md（4 个文件）
 
 **Files:**
+
 - Modify: `agent_runtime_profile/.claude/skills/generate-storyboard/SKILL.md`
 - Modify: `agent_runtime_profile/.claude/skills/generate-characters/SKILL.md`
 - Modify: `agent_runtime_profile/.claude/skills/generate-clues/SKILL.md`
@@ -515,6 +535,7 @@ git commit -m "fix: 统一 agent 定义中的脚本调用路径，修正 add_cha
 
 ```markdown
 # 为多个场景重新生成
+
 python .claude/skills/generate-storyboard/scripts/generate_storyboard.py script.json --scene-ids E1S01 E1S02
 ```
 
@@ -541,6 +562,7 @@ python .claude/skills/generate-storyboard/scripts/generate_storyboard.py script.
 - [ ] **Step 5: 验证**
 
 用 Grep 工具在 `agent_runtime_profile/.claude/skills/` 目录中搜索：
+
 - `references/content-modes.md`（不含 `.claude/` 前缀的）→ 应无匹配
 - `cd projects/` → 应无匹配
 - `../../.claude/skills/` → 应无匹配
@@ -560,11 +582,12 @@ git commit -m "fix: 统一 skill SKILL.md 中的 reference 路径和脚本调用
 ### Task 7: 精简 session_manager.py Persona Prompt
 
 **Files:**
+
 - Modify: `server/agent_runtime/session_manager.py:316-335`
 
 **Fixes:** #6
 
-- [ ] **Step 1: 精简 _PERSONA_PROMPT**
+- [ ] **Step 1: 精简 \_PERSONA_PROMPT**
 
 将第 316-335 行的 `_PERSONA_PROMPT` 替换为精简版（删除与 CLAUDE.md 重复的内容）：
 
@@ -572,7 +595,7 @@ git commit -m "fix: 统一 skill SKILL.md 中的 reference 路径和脚本调用
      _PERSONA_PROMPT = """\
  ## 身份
 
- 你是 ArcReel 智能体，一个专业的 AI 视频内容创作助手。你的职责是将小说转化为可发布的短视频内容。
+ 你是 Filmate 智能体，一个专业的 AI 视频内容创作助手。你的职责是将小说转化为可发布的短视频内容。
 
  ## 行为准则
 
@@ -595,6 +618,7 @@ git commit -m "fix: 统一 skill SKILL.md 中的 reference 路径和脚本调用
 - [ ] **Step 2: 验证**
 
 用 Read 工具读取修改后的 `session_manager.py:316-340`，确认：
+
 - `_PERSONA_PROMPT` 不再包含 "使用中文"
 - `_PERSONA_PROMPT` 不再包含 "编排模式" 章节
 - `_PERSONA_PROMPT` 不再包含 "manga-workflow"
@@ -612,6 +636,7 @@ git commit -m "refactor: 精简 Persona Prompt，删除与 CLAUDE.md 重复的�
 ## Plan Self-Review
 
 **Spec coverage:**
+
 - #1 Agent 名称错误 → Task 3 Step 1（删除含错误名称的表）+ Step 2（更新架构图）✅
 - #2 幽灵 skill 权限 → Task 1 ✅
 - #3 add_characters_clues.py 调用不一致 → Task 5 Step 1 ✅

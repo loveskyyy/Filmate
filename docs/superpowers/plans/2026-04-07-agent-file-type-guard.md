@@ -12,17 +12,18 @@
 
 ## File Map
 
-| 文件 | 操作 | 职责 |
-|---|---|---|
+| 文件                                      | 操作   | 职责                                                                                                                         |
+| ----------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------- |
 | `server/agent_runtime/session_manager.py` | Modify | `_WRITABLE_EXTENSIONS` 白名单 + `_is_path_allowed` 返回值改造 + `_build_file_access_hook` deny 消息 + `_PERSONA_PROMPT` 追加 |
-| `agent_runtime_profile/CLAUDE.md` | Modify | 新增"职责边界"小节 |
-| `tests/test_session_manager_more.py` | Modify | 新增扩展名拦截测试用例 |
+| `agent_runtime_profile/CLAUDE.md`         | Modify | 新增"职责边界"小节                                                                                                           |
+| `tests/test_session_manager_more.py`      | Modify | 新增扩展名拦截测试用例                                                                                                       |
 
 ---
 
 ### Task 1: `_is_path_allowed` 返回值改造 + 扩展名白名单
 
 **Files:**
+
 - Modify: `server/agent_runtime/session_manager.py:254` (新增类属性)
 - Modify: `server/agent_runtime/session_manager.py:1538-1591` (`_is_path_allowed` 方法)
 - Modify: `server/agent_runtime/session_manager.py:498-526` (`_build_file_access_hook` 方法)
@@ -224,6 +225,7 @@ git commit -m "feat: Write/Edit 文件类型白名单（.json/.md/.txt）"
 ### Task 2: Prompt 层职责边界约束
 
 **Files:**
+
 - Modify: `server/agent_runtime/session_manager.py:317-327` (`_PERSONA_PROMPT`)
 - Modify: `agent_runtime_profile/CLAUDE.md:76-79` (关键约束之后)
 
@@ -235,7 +237,7 @@ git commit -m "feat: Write/Edit 文件类型白名单（.json/.md/.txt）"
 _PERSONA_PROMPT = """\
 ## 身份
 
-你是 ArcReel 智能体，一个专业的 AI 视频内容创作助手。你的职责是将小说转化为可发布的短视频内容。
+你是 Filmate 智能体，一个专业的 AI 视频内容创作助手。你的职责是将小说转化为可发布的短视频内容。
 
 ## 行为准则
 
