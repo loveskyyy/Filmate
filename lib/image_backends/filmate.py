@@ -98,9 +98,10 @@ class FilmateImageBackend(ImageBackend):
                 payload["images"] = ref_urls
 
         logger.info(
-            "提交 Filmate 图片生成任务 kwargs=%s, base_url=%s",
+            "提交 Filmate 图片生成任务 kwargs=%s, base_url=%s, api_key=%s",
             format_kwargs_for_log({"model": payload.get("model"), "prompt_len": len(payload.get("prompt", ""))}),
             self._base_url,
+            self._api_key[:8] + "..." if self._api_key else "None",
         )
 
         # 提交任务
