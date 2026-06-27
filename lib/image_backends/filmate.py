@@ -50,7 +50,7 @@ class FilmateImageBackend(ImageBackend):
         self._api_key = api_key or ""
         self._base_url = base_url or DEFAULT_BASE_URL
         self._model = model or DEFAULT_MODEL
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=30.0))
+        self._client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=30.0), follow_redirects=True)
         self._capabilities: set[ImageCapability] = {
             ImageCapability.TEXT_TO_IMAGE,
             ImageCapability.IMAGE_TO_IMAGE,
@@ -98,10 +98,10 @@ class FilmateImageBackend(ImageBackend):
                 payload["images"] = ref_urls
 
         logger.info(
-            "提交 Filmate 图片生成任务 kwargs=%s, base_url=%s, api_key=%s",
+            "提交 Filmate 图片生成任务 headers=%s, payload=%s, base_url=%s",
+            headers,
             format_kwargs_for_log({"model": payload.get("model"), "prompt_len": len(payload.get("prompt", ""))}),
             self._base_url,
-            self._api_key[:8] + "..." if self._api_key else "None",
         )
 
         # 提交任务
