@@ -123,11 +123,11 @@ class FilmateImageBackend(ImageBackend):
         # 轮询获取结果
         image_url = await self._poll_task_result(task_id, headers)
 
-        # 下载图片
-        output_path = await self._download_image(image_url)
+        # 下载图片到 output_path
+        await self._download_image(image_url, request.output_path)
 
         return ImageGenerationResult(
-            image_path=output_path,
+            image_path=request.output_path,
             image_uri=image_url,
             provider=self.name,
             model=self.model,
@@ -183,23 +183,16 @@ class FilmateImageBackend(ImageBackend):
 
         raise TimeoutError(f"Filmate 图片任务轮询超时: task_id={task_id}")
 
-    async def _download_image(self, url: str) -> Path:
-        """下载图片到临时文件。"""
-        import tempfile
-
+    async def _download_image(self, url: str, output_path: Path) -> None:
+        """下载图片到指定路径。"""
         response = await self._client.get(url)
         response.raise_for_status()
 
         content = response.content
 
-        # 确定文件扩展名
-        ext = "png"
-        if url.endswith(".jpg") or url.endswith(".jpeg"):
-            ext = "jpg"
-        elif url.endswith(".webp"):
-            ext = "webp"
+        # 确保父目录存在
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # 保存到临时文件
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as f:
+        # 保存到文件
+        with open(output_path, "wb") as f:
             f.write(content)
-            return Path(f.name)
