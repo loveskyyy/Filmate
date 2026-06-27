@@ -70,24 +70,10 @@ def _build_simple(config: LoadedConfig, model_id: str | None, *, media_type: str
     base_url 优先级见 _resolve_base_url —— grok 等无 default 且用户未配的 provider 不接受 base_url
     参数，传 None 会触发 TypeError，故仅非空才写入。
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     kwargs: dict[str, Any] = {"model": model_id}
     api_key = config.credentials.get("api_key")
-    logger.info("_build_simple: credentials=%s", config.credentials)
     if api_key:
         kwargs["api_key"] = api_key
-        logger.info(
-            "_build_simple filmate: api_key=%s (len=%d), model=%s, media=%s",
-            api_key[:8] + "...",
-            len(api_key),
-            model_id,
-            media_type,
-        )
-    else:
-        logger.warning("_build_simple filmate: api_key is EMPTY or None! credentials=%s", config.credentials)
     base_url = _resolve_base_url(config)
     if base_url:
         kwargs["base_url"] = base_url

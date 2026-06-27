@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from lib.image_backends.base import (
     ImageGenerationRequest,
     ImageGenerationResult,
 )
+from lib.logging_utils import format_kwargs_for_log
 from lib.retry import with_retry_async
 
 logger = logging.getLogger(__name__)
@@ -49,9 +51,7 @@ class FilmateImageBackend(ImageBackend):
         self._api_key = api_key or ""
         self._base_url = base_url or DEFAULT_BASE_URL
         self._model = model or DEFAULT_MODEL
-        self._client = httpx.AsyncClient(
-            timeout=httpx.Timeout(120.0, connect=30.0), follow_redirects=True, trust_env=False
-        )
+        self._client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=30.0), follow_redirects=True)
         self._capabilities: set[ImageCapability] = {
             ImageCapability.TEXT_TO_IMAGE,
             ImageCapability.IMAGE_TO_IMAGE,
@@ -80,12 +80,6 @@ class FilmateImageBackend(ImageBackend):
             "Content-Type": "application/json",
         }
 
-        logger.info(
-            "FilmateImageBackend.generate - self._api_key=%s, request.prompt[:50]=%s",
-            self._api_key[:8] + "..." if self._api_key else "None",
-            str(request.prompt)[:50] if request.prompt else "None",
-        )
-
         # 构建请求体
         payload: dict = {
             "model": self._model,
@@ -105,49 +99,16 @@ class FilmateImageBackend(ImageBackend):
                 payload["images"] = ref_urls
 
         logger.info(
-            "提交 Filmate 图片生成任务 headers=%s, payload=%s, base_url=%s, api_key=%s",
-            headers,
-            payload,
-            self._base_url,
-            self._api_key[:8] + "..." if self._api_key else "None",
+            "提交 Filmate 图片生成任务 kwargs=%s",
+            format_kwargs_for_log({"model": payload.get("model"), "prompt_len": len(payload.get("prompt", ""))}),
         )
 
         # 提交任务
         submit_url = f"{self._base_url}/images/generations"
-        # 直接打印原始数据，不经过任何格式化
-        import json as _json
-
-        logger.info("===== 发送请求 =====")
-        logger.info("URL: %s", submit_url)
-        logger.info("Authorization原始值: %s", headers["Authorization"])
-        logger.info("Body: %s", _json.dumps(payload, ensure_ascii=False))
-        logger.info("===== 发送请求结束 =====")
-        # 打印实际发送的完整请求
-        import sys
-
-        sys.stdout.write("\n===== DEBUG: 发送请求 =====\n")
-        sys.stdout.write(f"URL: {submit_url}\n")
-        sys.stdout.write(f"self._api_key: '{self._api_key}' (len={len(self._api_key)})\n")
-        sys.stdout.write(
-            f"headers['Authorization']: '{headers['Authorization']}' (len={len(headers['Authorization'])})\n"
-        )
-        sys.stdout.write(f"Authorization repr: {repr(headers['Authorization'])}\n")
-        sys.stdout.write("===== DEBUG END =====\n")
-        sys.stdout.flush()
-
-        # 禁用 httpx 日志，避免敏感信息被过滤
-        import logging
-
-        httpx_logger = logging.getLogger("httpx")
-        original_level = httpx_logger.level
-        httpx_logger.setLevel(logging.WARNING)
-
         response = await self._client.post(submit_url, json=payload, headers=headers)
-        httpx_logger.setLevel(original_level)
         response.raise_for_status()
 
         result = response.json()
-        logger.info("Filmate 图片提交响应: %s", result)
 
         if result.get("code") != 200:
             raise RuntimeError(f"Filmate 图片提交失败: {result}")
@@ -192,7 +153,18 @@ class FilmateImageBackend(ImageBackend):
             status = task_data.get("status")
 
             if status == _TASK_STATUS_SUCCESS:
+                # 尝试多种可能的字段名
                 image_url = task_data.get("image_url") or task_data.get("url")
+                if not image_url:
+                    # 尝试 result 字段（可能是 JSON 数组字符串）
+                    result_str = task_data.get("result")
+                    if result_str:
+                        try:
+                            result_list = json.loads(result_str)
+                            if isinstance(result_list, list) and result_list:
+                                image_url = result_list[0]
+                        except Exception:
+                            pass
                 if not image_url:
                     raise RuntimeError(f"Filmate 任务成功但无图片 URL: {task_data}")
                 logger.info("Filmate 图片任务完成: task_id=%s, url=%s", task_id, image_url)
