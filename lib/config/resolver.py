@@ -674,20 +674,10 @@ class ConfigResolver:
         session: AsyncSession,
         provider_id: str,
     ) -> dict[str, str]:
-        import logging
-
-        logger = logging.getLogger(__name__)
-
         config = await svc.get_provider_config(provider_id)
         cred_repo = CredentialRepository(session)
         active = await cred_repo.get_active(provider_id)
         if active:
-            logger.info(
-                "_resolve_provider_config: provider=%s, cred.api_key=%s (len=%d)",
-                provider_id,
-                active.api_key[:8] + "..." if active.api_key else None,
-                len(active.api_key) if active.api_key else 0,
-            )
             active.overlay_config(config)
         return config
 
