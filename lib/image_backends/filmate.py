@@ -127,12 +127,23 @@ class FilmateImageBackend(ImageBackend):
 
         sys.stdout.write("\n===== DEBUG: 发送请求 =====\n")
         sys.stdout.write(f"URL: {submit_url}\n")
-        sys.stdout.write(f"Authorization: {headers['Authorization']}\n")
-        sys.stdout.write(f"Body: {payload}\n")
+        sys.stdout.write(f"self._api_key: '{self._api_key}' (len={len(self._api_key)})\n")
+        sys.stdout.write(
+            f"headers['Authorization']: '{headers['Authorization']}' (len={len(headers['Authorization'])})\n"
+        )
+        sys.stdout.write(f"Authorization repr: {repr(headers['Authorization'])}\n")
         sys.stdout.write("===== DEBUG END =====\n")
         sys.stdout.flush()
 
+        # 禁用 httpx 日志，避免敏感信息被过滤
+        import logging
+
+        httpx_logger = logging.getLogger("httpx")
+        original_level = httpx_logger.level
+        httpx_logger.setLevel(logging.WARNING)
+
         response = await self._client.post(submit_url, json=payload, headers=headers)
+        httpx_logger.setLevel(original_level)
         response.raise_for_status()
 
         result = response.json()
