@@ -1,10 +1,11 @@
 """FilmateImageBackend — Filmate 图片生成后端。
 
-基于 OpenAI 兼容 Images API。
+基于 OpenAI 兼容 API，使用任务轮询模式获取结果。
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -22,21 +23,20 @@ logger = logging.getLogger(__name__)
 DEFAULT_BASE_URL = "https://sk.aistore777.top/api/v1"
 DEFAULT_MODEL = "GPT image2"
 
+# 任务状态码
+_TASK_STATUS_PENDING = 0
+_TASK_STATUS_SUCCESS = 1
+_TASK_STATUS_FAILED = 2
+_TASK_STATUS_PROCESSING = 3
+_TASK_STATUS_SUBMITTED = 4
 
-def _map_resolution(resolution: str | None) -> str | None:
-    """映射分辨率字符串。"""
-    if resolution is None:
-        return None
-    return resolution
-
-
-def _map_aspect_ratio(aspect_ratio: str) -> str:
-    """映射宽高比字符串。"""
-    return aspect_ratio
+# 重试配置
+_POLL_INTERVAL = 2.0  # 秒
+_MAX_POLL_ATTEMPTS = 60  # 最多等待 120 秒
 
 
 class FilmateImageBackend(ImageBackend):
-    """Filmate 图片生成后端，使用 OpenAI SDK。"""
+    """Filmate 图片生成后端，使用任务轮询模式。"""
 
     def __init__(
         self,
@@ -45,12 +45,12 @@ class FilmateImageBackend(ImageBackend):
         model: str | None = None,
         base_url: str | None = None,
     ):
-        from openai import AsyncOpenAI
+        import httpx
 
         self._api_key = api_key or ""
         self._base_url = base_url or DEFAULT_BASE_URL
         self._model = model or DEFAULT_MODEL
-        self._client = AsyncOpenAI(api_key=self._api_key, base_url=self._base_url, timeout=120.0)
+        self._client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=30.0))
         self._capabilities: set[ImageCapability] = {
             ImageCapability.TEXT_TO_IMAGE,
             ImageCapability.IMAGE_TO_IMAGE,
@@ -70,44 +70,59 @@ class FilmateImageBackend(ImageBackend):
 
     @with_retry_async(max_attempts=3, backoff_seconds=(2, 4, 8))
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult:
-        """生成图片，使用 OpenAI Images API。"""
+        """生成图片，使用任务提交 + 轮询模式。"""
         has_refs = bool(request.reference_images)
 
-        if not self._api_key:
-            logger.error("Filmate API Key 为空！")
+        # 构建请求头
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
 
-        # 构建请求参数
-        kwargs: dict = {
+        # 构建请求体
+        payload: dict = {
             "model": self._model,
             "prompt": request.prompt,
         }
 
         # 处理尺寸参数
         aspect_ratio = request.aspect_ratio or "1:1"
-        kwargs["size"] = _map_aspect_ratio(aspect_ratio)
+        payload["size"] = aspect_ratio
 
         # 处理参考图 (I2I)
         if has_refs:
             ref_urls = [ref.path for ref in request.reference_images]
-            kwargs["image"] = ref_urls[0] if len(ref_urls) == 1 else ref_urls
+            if len(ref_urls) == 1:
+                payload["image"] = ref_urls[0]
+            else:
+                payload["images"] = ref_urls
 
         logger.info(
-            "提交 Filmate 图片生成任务 kwargs=%s",
-            format_kwargs_for_log({"model": kwargs.get("model"), "prompt_len": len(kwargs.get("prompt", ""))}),
+            "提交 Filmate 图片生成任务 kwargs=%s, base_url=%s",
+            format_kwargs_for_log({"model": payload.get("model"), "prompt_len": len(payload.get("prompt", ""))}),
+            self._base_url,
         )
 
-        response = await self._client.images.generate(**kwargs)
+        # 提交任务
+        submit_url = f"{self._base_url}/images/generations"
+        response = await self._client.post(submit_url, json=payload, headers=headers)
+        response.raise_for_status()
 
-        logger.info("Filmate 图片生成响应: %s", response)
+        result = response.json()
+        logger.info("Filmate 图片提交响应: %s", result)
 
-        # 获取图片 URL
-        if not response.data:
-            raise RuntimeError(f"Filmate 图片生成返回空数据: {response}")
+        if result.get("code") != 200:
+            raise RuntimeError(f"Filmate 图片提交失败: {result}")
 
-        image_data = response.data[0]
-        image_url = image_data.url or image_data.b64_json
-        if not image_url:
-            raise RuntimeError(f"Filmate 图片生成返回空 URL: {response}")
+        task_data = result.get("data", {})
+        task_id = task_data.get("task_id")
+        if not task_id:
+            raise RuntimeError(f"Filmate 响应缺少 task_id: {result}")
+
+        logger.info("Filmate 图片任务已提交: task_id=%s", task_id)
+
+        # 轮询获取结果
+        image_url = await self._poll_task_result(task_id, headers)
 
         # 下载图片
         output_path = await self._download_image(image_url)
@@ -119,12 +134,50 @@ class FilmateImageBackend(ImageBackend):
             model=self.model,
         )
 
+    @with_retry_async(max_attempts=3, backoff_seconds=(2, 4, 8))
+    async def _poll_task_result(self, task_id: str, headers: dict) -> str:
+        """轮询任务结果直到完成。"""
+        poll_url = f"{self._base_url}/tasks/{task_id}"
+
+        for attempt in range(_MAX_POLL_ATTEMPTS):
+            await asyncio.sleep(_POLL_INTERVAL)
+
+            response = await self._client.get(poll_url, headers=headers)
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get("code") != 200:
+                logger.warning("轮询任务状态失败: %s", result)
+                continue
+
+            task_data = result.get("data", {})
+            status = task_data.get("status")
+
+            if status == _TASK_STATUS_SUCCESS:
+                image_url = task_data.get("image_url") or task_data.get("url")
+                if not image_url:
+                    raise RuntimeError(f"Filmate 任务成功但无图片 URL: {task_data}")
+                logger.info("Filmate 图片任务完成: task_id=%s, url=%s", task_id, image_url)
+                return image_url
+
+            elif status == _TASK_STATUS_FAILED:
+                error_msg = task_data.get("error", "未知错误")
+                raise RuntimeError(f"Filmate 图片生成失败: {error_msg}")
+
+            elif status in (_TASK_STATUS_PENDING, _TASK_STATUS_PROCESSING, _TASK_STATUS_SUBMITTED):
+                logger.debug("轮询 Filmate 图片任务: task_id=%s status=%s attempt=%d", task_id, status, attempt)
+                continue
+
+            else:
+                logger.warning("未知任务状态: status=%s task_data=%s", status, task_data)
+
+        raise TimeoutError(f"Filmate 图片任务轮询超时: task_id={task_id}")
+
     async def _download_image(self, url: str) -> Path:
         """下载图片到临时文件。"""
         import tempfile
-        from pathlib import Path
 
-        response = await self._client._client.get(url)
+        response = await self._client.get(url)
         response.raise_for_status()
 
         content = response.content
