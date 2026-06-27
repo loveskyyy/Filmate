@@ -15,7 +15,6 @@ from lib.image_backends.base import (
     ImageGenerationRequest,
     ImageGenerationResult,
 )
-from lib.logging_utils import format_kwargs_for_log
 from lib.retry import with_retry_async
 
 logger = logging.getLogger(__name__)
@@ -79,6 +78,12 @@ class FilmateImageBackend(ImageBackend):
             "Content-Type": "application/json",
         }
 
+        logger.info(
+            "FilmateImageBackend.generate - self._api_key=%s, request.prompt[:50]=%s",
+            self._api_key[:8] + "..." if self._api_key else "None",
+            str(request.prompt)[:50] if request.prompt else "None",
+        )
+
         # 构建请求体
         payload: dict = {
             "model": self._model,
@@ -98,14 +103,23 @@ class FilmateImageBackend(ImageBackend):
                 payload["images"] = ref_urls
 
         logger.info(
-            "提交 Filmate 图片生成任务 headers=%s, payload=%s, base_url=%s",
+            "提交 Filmate 图片生成任务 headers=%s, payload=%s, base_url=%s, api_key=%s",
             headers,
-            format_kwargs_for_log({"model": payload.get("model"), "prompt_len": len(payload.get("prompt", ""))}),
+            payload,
             self._base_url,
+            self._api_key[:8] + "..." if self._api_key else "None",
         )
 
         # 提交任务
         submit_url = f"{self._base_url}/images/generations"
+        # 直接打印原始数据，不经过任何格式化
+        import json as _json
+
+        logger.info("===== 发送请求 =====")
+        logger.info("URL: %s", submit_url)
+        logger.info("Headers: %s", dict(headers))
+        logger.info("Body: %s", _json.dumps(payload, ensure_ascii=False))
+        logger.info("===== 发送请求结束 =====")
         response = await self._client.post(submit_url, json=payload, headers=headers)
         response.raise_for_status()
 
