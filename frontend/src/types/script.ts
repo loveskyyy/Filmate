@@ -64,6 +64,88 @@ export interface Dialogue {
   line: string;
 }
 
+export type UtteranceKind = "dialogue" | "voiceover";
+
+/**
+ * Drama 场景级有序发声条目，判别式联合（discriminated union）按 kind 收窄，把 kind ⇄ speaker
+ * 约束编码进类型：dialogue 必带非空 speaker、voiceover 不得带 speaker。非法组合（dialogue 缺
+ * speaker、voiceover 带 speaker）编译期即被拒，与运行时 isUtterance 守卫及后端 Utterance 契约一致。
+ * 取代旧 video_prompt.dialogue + 场景 voiceover 双字段（见 ADR 0040）。
+ * 富审阅 / 编辑 UI 后续提供；本阶段仅类型 / 形状守卫。
+ */
+export interface DialogueUtterance {
+  kind: "dialogue";
+  /** 角色台词必带非空说话人。 */
+  speaker: string;
+  text: string;
+}
+
+export interface VoiceoverUtterance {
+  kind: "voiceover";
+  /** 无说话人画外音：speaker 恒为 null 或缺省。 */
+  speaker?: null;
+  text: string;
+}
+
+export type Utterance = DialogueUtterance | VoiceoverUtterance;
+
+/**
+ * step1 结构化中间态（审核 gate 的可审 / 可改对象）。映射后端 lib/script_models.py 的
+ * DramaSceneContent / DramaNormalizedScript 与 NarrationStep1Segment / NarrationStep1Draft：
+ * step1 已定内容层，step2 视觉生成（image_prompt / video_prompt）由用户确认后才触发。
+ */
+export interface DramaSceneContent {
+  scene_id: string;
+  duration_seconds: number;
+  segment_break: boolean;
+  characters_in_scene: string[];
+  scenes: string[];
+  props: string[];
+  /** 视觉改编自由文本（供 step2 生成画面，不内嵌口播）。 */
+  scene_description: string;
+  /** 场景级有序发声序列：台词 / 画外音按时序排列（审核 gate 的富编辑对象）。 */
+  utterances: Utterance[];
+  /** 逐字原文摘录（追溯锚，不朗读、不出音）。 */
+  source_text: string;
+}
+
+export interface DramaNormalizedScript {
+  title: string;
+  scenes: DramaSceneContent[];
+}
+
+export interface NarrationStep1Segment {
+  segment_id: string;
+  /** 小说原文（逐字保留，审核 gate 的可编辑对象）。 */
+  novel_text: string;
+  duration_seconds: number;
+  segment_break: boolean;
+  characters_in_segment: string[];
+  scenes: string[];
+  props: string[];
+}
+
+export interface NarrationStep1Draft {
+  segments: NarrationStep1Segment[];
+  episode?: number;
+}
+
+export type ScriptReviewStatus =
+  | "not_applicable"
+  | "no_step1"
+  | "pending_review"
+  | "confirmed";
+
+/** step1→step2 审核 gate 状态（后端 server/services/script_review.py 的 get_state 响应）。 */
+export interface ScriptReviewState {
+  episode: number;
+  content_mode: string | null;
+  status: ScriptReviewStatus;
+  fingerprint: string | null;
+  confirmed_at: string | null;
+  content: DramaNormalizedScript | NarrationStep1Draft | null;
+}
+
 export interface Composition {
   shot_type: ShotType;
   lighting: string;
@@ -119,6 +201,11 @@ export interface DramaScene {
   props?: string[];
   image_prompt: ImagePrompt | string;
   video_prompt: VideoPrompt | string;
+  /**
+   * 场景级有序发声序列：角色台词与画外音按时序排列。新结构（drama）；
+   * 存量 drama 走后端读时迁移，前端读到时此字段可能缺省。
+   */
+  utterances?: Utterance[];
   transition_to_next: TransitionType;
   note?: string;
   generated_assets?: GeneratedAssets;

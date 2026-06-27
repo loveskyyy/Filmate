@@ -108,6 +108,43 @@ def video_prompt_to_yaml(video_prompt: dict) -> str:
     return yaml.dump(ordered, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
 
+def utterances_to_dialogue(utterances: object) -> list[dict[str, str]]:
+    """drama 口型音轨出口：从有序 ``utterances`` 取 dialogue-kind 条目，转成 video YAML 的
+    ``{speaker, line}`` 列表（保留时序）。
+
+    voiceover-kind 不进视频提示词（无 speaker，留给字幕 / TTS）。对脏数据稳健：非 list 整体、
+    非 dict/object 元素、非 dialogue 条目一律跳过；dialogue 须 speaker 与 line 同时非空才进口型音轨，
+    缺 speaker 的脏 dialogue（契约要求 dialogue 必带非空 speaker）不重新喂给 lip-sync / video prompt。
+
+    兼容两种条目形态：原始 JSON ``dict`` 与已实例化的 Pydantic ``Utterance`` 模型对象（取同名属性）。
+    speaker / text 用 ``isinstance(_, str)`` 显式取值，非字符串（如数字）按空处理、不 ``str()`` 强转，
+    避免脏类型被静默字符串化进 YAML。
+    """
+    dialogue: list[dict[str, str]] = []
+    if not isinstance(utterances, list):
+        return dialogue
+    for entry in utterances:
+        if isinstance(entry, dict):
+            kind = entry.get("kind")
+            speaker_val = entry.get("speaker")
+            text_val = entry.get("text")
+        elif hasattr(entry, "kind"):
+            kind = getattr(entry, "kind", None)
+            speaker_val = getattr(entry, "speaker", None)
+            text_val = getattr(entry, "text", None)
+        else:
+            continue
+
+        if kind != "dialogue":
+            continue
+
+        speaker = speaker_val.strip() if isinstance(speaker_val, str) else ""
+        line = text_val.strip() if isinstance(text_val, str) else ""
+        if speaker and line:
+            dialogue.append({"speaker": speaker, "line": line})
+    return dialogue
+
+
 def is_structured_image_prompt(image_prompt) -> bool:
     """
     检查 image_prompt 是否为结构化格式

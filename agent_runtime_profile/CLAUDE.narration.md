@@ -35,7 +35,7 @@ agent session 的当前工作目录（cwd）已绑定到当前项目根，**所�
 
 - **Read / Edit / Write / Glob / Grep**：`file_path` 使用**绝对路径**
 - **Bash 调用 skill 脚本**：使用**相对项目根 cwd** 的路径，例如：
-  - ✅ `source/episode_1.txt`、`drafts/episode_1/step1_segments.md`、`scripts/episode_1.json`
+  - ✅ `source/episode_1.txt`、`drafts/episode_1/step1_segments.json`、`scripts/episode_1.json`
   - ❌ `projects/{项目名}/source/episode_1.txt`（双前缀，占位符替换或拼接出错就会落到 projects 根）
 - **严禁**在工具参数中出现 `projects/{...}/` 前缀；该前缀仅用于文档说明项目目录结构，**不可直接作为参数传给任何工具**
 - skill 脚本内部已加 cwd 校验，cwd 漂离当前项目目录时会直接拒绝执行
@@ -134,8 +134,8 @@ agent session 的当前工作目录（cwd）已绑定到当前项目根，**所�
 3. **分集规划** → 主 agent 调用 `mcp__arcreel__plan_episodes` 服务端工具规划一批集（账本+派生集文件由工具维护）+ 批级审阅，意见经 `mcp__arcreel__replan_episodes` 一次性重排
 4. **单集预处理** → 按 `effective_mode` × `content_mode` 三分支选（中间文件统一位于 `drafts/episode_{N}/`）：
    - reference_video（任一 content_mode）→ `split-reference-video-units`（产出 `step1_reference_units.md`）
-   - storyboard / grid + narration → `split-narration-segments`（产出 `step1_segments.md`）
-   - storyboard / grid + drama → `normalize-drama-script`（产出 `step1_normalized_script.md`）
+   - storyboard / grid + narration → `split-narration-segments`（产出 `step1_segments.json`）
+   - storyboard / grid + drama → `normalize-drama-script`（产出结构化内容 `step1_normalized_script.json`）
 5. **JSON 剧本生成** → dispatch `create-episode-script` subagent；中间文件被修改/重拆后必须重新执行本阶段
 6. **资产设计（character/scene/prop 三类并行）** → dispatch `generate-assets` subagent
 7. **分镜图生成**：仅 `storyboard` / `grid` 模式；`reference_video` 跳过 → dispatch `generate-assets` subagent

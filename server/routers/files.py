@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import json
 import logging
 import shutil
 import tempfile
@@ -666,22 +667,37 @@ def _get_step_files(content_mode: str, generation_mode: str | None = None) -> di
     if generation_mode == "reference_video":
         return {1: "step1_reference_units.md"}
     if content_mode == "narration":
-        return {1: "step1_segments.md"}
-    return {1: "step1_normalized_script.md"}
+        return {1: "step1_segments.json"}
+    # drama 内容抽取前移后 step1 是结构化 JSON（见 ADR 0041）
+    return {1: "step1_normalized_script.json"}
 
 
-# step1 实际文件候选 —— 读取失败时用于 fallback 探测，兼容 episode 级 generation_mode 覆盖
+# step1 实际文件候选 —— 主文件不存在时用于 fallback 探测，兼容 episode 级 generation_mode 覆盖。
+# narration 结构化中间态为 step1_segments.json、drama 为 step1_normalized_script.json；
+# 各自保留旧 .md 候选以便存量在制品仍可浏览。
 _STEP1_CANDIDATES = [
     "step1_reference_units.md",
+    "step1_segments.json",
     "step1_segments.md",
+    "step1_normalized_script.json",
     "step1_normalized_script.md",
 ]
+
+# 按 primary 文件名分组的优先候选（mode 感知）：先在本模式自家候选里回落，再兜底其他模式遗留文件。
+# narration 优先结构化 .json、再旧版 .md，杜绝跨模式切换遗留把 narration 误选到 reference_units.md。
+_STEP1_FAMILY: dict[str, list[str]] = {
+    "step1_segments.json": ["step1_segments.json", "step1_segments.md"],
+    "step1_normalized_script.json": ["step1_normalized_script.json", "step1_normalized_script.md"],
+    "step1_reference_units.md": ["step1_reference_units.md"],
+}
 
 
 def _get_step_title(filename: str, _t: Callable[..., str]) -> str:
     """获取步骤标题"""
     titles = {
+        "step1_normalized_script.json": _t("normalized_script"),
         "step1_normalized_script.md": _t("normalized_script"),
+        "step1_segments.json": _t("segment_splitting"),
         "step1_segments.md": _t("segment_splitting"),
         "step1_reference_units.md": _t("segment_splitting"),
     }
@@ -708,13 +724,14 @@ def _load_project_modes(project_name: str, episode: int) -> tuple[str, str | Non
 
 
 def _resolve_step1_path(drafts_dir: Path, step_num: int, primary: Path) -> Path:
-    """主路径不存在时在 _STEP1_CANDIDATES 里回落，兼容跨模式切换遗留文件。
+    """主路径不存在时按 primary 所属模式优先回落，再兜底其他模式遗留文件（mode 感知）。
 
     step_num != 1 或主路径已存在：原样返回 primary；调用方自行 exists() 判定。
     """
     if step_num != 1 or primary.exists():
         return primary
-    for candidate in _STEP1_CANDIDATES:
+    family = _STEP1_FAMILY.get(primary.name, [primary.name])
+    for candidate in dict.fromkeys([*family, *_STEP1_CANDIDATES]):
         alt = drafts_dir / candidate
         if alt.exists():
             return alt
@@ -776,6 +793,26 @@ async def update_draft_content(
             # 若写入 fallback 到老文件，切模式后后续 subagent 读 step_files[step_num] 仍为空，
             # 导致"前端保存成功但生成报缺少 step1"。
             draft_path = drafts_dir / step_files[step_num]
+
+            # drama step1 落结构化 .json：写入前与 _load_drama_step1_content 的读取契约同口径校验
+            # ——合法 JSON、顶层对象、scenes 为非空且每项为带非空 scene_id 的对象，避免任意文本 / 空剧本 /
+            # 非对象场景项 / 缺失或空 scene_id 写进结构化草稿、拖到生成阶段才解析失败（前端保存成功但生成必然
+            # 失败）。仅约束 drama 的结构化 step1；narration / reference 的 step1 草稿不在此校验。
+            if content_mode == "drama" and draft_path.suffix == ".json":
+                try:
+                    parsed = json.loads(content)
+                except json.JSONDecodeError:
+                    raise HTTPException(status_code=400, detail=_t("draft_invalid_json"))
+                scenes = parsed.get("scenes") if isinstance(parsed, dict) else None
+                if (
+                    not isinstance(parsed, dict)
+                    or not isinstance(scenes, list)
+                    or not scenes
+                    or any(not isinstance(scene, dict) for scene in scenes)
+                    or any(not isinstance(scene.get("scene_id"), str) or not scene.get("scene_id") for scene in scenes)
+                ):
+                    raise HTTPException(status_code=400, detail=_t("draft_invalid_json"))
+
             is_new = not draft_path.exists()
             draft_path.write_text(content, encoding="utf-8")
 

@@ -24,6 +24,14 @@ from lib.script_models import (
     REFERENCE_SHOT_DURATION_RANGE,
     ad_script_total_duration,
 )
+from lib.speech_rate import estimate_spoken_seconds
+
+#: drama 场景说话量（台词 + 画外音）对场景时长的单向上界容差（比例）。语速估算
+#: （``lib.speech_rate`` 单一真相源）是近似值，给 20% 余量只在说话量明显超过画面时长时才
+#: warn（长对白塞进固定秒数会说不完 / 语速畸快）。单向上界：只警告「说不完」，不管「说话太少」
+#: ——duration 由画面驱动、留白合法，不被此约束反向改写。仅 DataValidator 消费，与 ad 总时长
+#: 漂移阈值同量级、同「只 warn 不阻塞」语义。
+DRAMA_SPEECH_OVERFLOW_TOLERANCE = 0.20
 
 
 @dataclass
@@ -582,8 +590,12 @@ class DataValidator:
         warnings: list[str],
         *,
         project_dir: Path | None = None,
+        language: str | None = None,
     ) -> None:
-        """验证 scenes（drama 模式）"""
+        """验证 scenes（drama 模式）。
+
+        ``language`` 为项目 ``source_language``（说话量上界 warning 的语速按此取，与字幕派生同口径）。
+        """
         if not scenes:
             errors.append("scenes 数组为空")
             return
@@ -633,16 +645,20 @@ class DataValidator:
                 if invalid:
                     errors.append(f"{prefix}: props 引用了不存在于 project.json 的道具: {invalid}")
 
-            # voiceover 为可选画外音列表（screenplay 模式逐字保留，novel 模式留空）；
-            # 缺失放行，出现则必须是数组、元素必须是字符串，锁住 list[str] 契约，
-            # 与上方 characters_in_scene / scenes / props 同口径（逐项 append、不 raise）。
-            voiceover = scene.get("voiceover")
-            if voiceover is not None and not isinstance(voiceover, list):
-                errors.append(f"{prefix}: voiceover 必须是数组")
-            elif isinstance(voiceover, list):
-                for vi, item in enumerate(voiceover):
-                    if not isinstance(item, str):
-                        errors.append(f"{prefix}: voiceover[{vi}] 必须是字符串")
+            # utterances：场景级有序发声序列（取代旧 video_prompt.dialogue + voiceover）。
+            # 缺失放行（存量 drama 走读时迁移，旧双字段不在此层校验）；出现则校验结构与
+            # kind ⇄ speaker 约束，与上方 characters_in_scene 等同口径（逐项 append、不 raise）。
+            self._validate_utterances(scene.get("utterances"), prefix, errors)
+
+            # 说话量（台词 + 画外音）对场景时长的单向上界 warning：估算说话时长超 duration × 容差
+            # 时仅提示「说不完」，不阻塞、不改写 duration（duration 由画面驱动）。
+            self._warn_scene_speech_overflow(scene, prefix, language, warnings)
+
+            # source_text：逐字原文锚（best-effort，由 step1 内容抽取填入、step2 透传）。镜像共享模型
+            # 的 source_text: str（extra=forbid 下显式 null 同样被拒）——键存在则须为字符串，显式 null
+            # 一并拒绝；键缺失放行（默认空串，存量数据无此字段）。用 in 判定以区分缺失与显式 null。
+            if "source_text" in scene and not isinstance(scene["source_text"], str):
+                errors.append(f"{prefix}: source_text 必须是字符串")
 
             if not scene.get("image_prompt"):
                 errors.append(f"{prefix}: 缺少必填字段 image_prompt")
@@ -656,6 +672,80 @@ class DataValidator:
                     scene.get("generated_assets"),
                     errors,
                 )
+
+    @staticmethod
+    def _validate_utterances(utterances: Any, prefix: str, errors: list[str]) -> None:
+        """校验 drama 场景级 utterances 的结构与 kind ⇄ speaker 约束（缺失放行，存量走读时迁移）。
+
+        每条须为 ``{kind, speaker, text}``：kind ∈ {dialogue, voiceover}、text 非空字符串；
+        dialogue 必带非空 speaker、voiceover 不得带 speaker。逐项 append、不 raise。
+        """
+        if utterances is None:
+            return
+        if not isinstance(utterances, list):
+            errors.append(f"{prefix}: utterances 必须是数组")
+            return
+        for ui, item in enumerate(utterances):
+            uprefix = f"{prefix}: utterances[{ui}]"
+            if not isinstance(item, dict):
+                errors.append(f"{uprefix} 必须是对象")
+                continue
+            kind = item.get("kind")
+            if kind not in ("dialogue", "voiceover"):
+                errors.append(f"{uprefix} kind 必须是 dialogue 或 voiceover")
+            text = item.get("text")
+            if not isinstance(text, str) or not text.strip():
+                errors.append(f"{uprefix} text 必须是非空字符串")
+            speaker = item.get("speaker")
+            if speaker is not None and not isinstance(speaker, str):
+                # speaker 仅允许字符串或 null（镜像 Utterance.speaker: str | None 的类型约束）：
+                # 数字 / 布尔 / 对象等在 Pydantic 层即类型校验失败，这里同口径 fail-loud，避免
+                # 非法 shape 在结构校验里静默放行、到 Pydantic 才崩。置 has_speaker=True 表示
+                # 「提供了 speaker」，使 dialogue 不再叠报「缺 speaker」（类型错才是根因）。
+                errors.append(f"{uprefix} speaker 必须是字符串或 null")
+                has_speaker = True
+            else:
+                # 字符串（空串 / 纯空白按 Utterance._normalize_speaker 同口径归一为「无 speaker」）或 None
+                has_speaker = isinstance(speaker, str) and bool(speaker.strip())
+            if kind == "dialogue" and not has_speaker:
+                errors.append(f"{uprefix} dialogue 必须带非空 speaker")
+            elif kind == "voiceover" and has_speaker:
+                errors.append(f"{uprefix} voiceover 不得带 speaker")
+
+    @staticmethod
+    def _warn_scene_speech_overflow(
+        scene: dict[str, Any],
+        prefix: str,
+        language: str | None,
+        warnings: list[str],
+    ) -> None:
+        """场景说话量（台词 + 画外音）估算时长超 ``duration ×（1 + 容差）`` 时仅 warn（单向上界，不阻塞）。
+
+        说话时长按 ``estimate_spoken_seconds``（语速估算单一真相源）对 utterances 逐条求和，与 drama
+        字幕 span 派生同口径；空 / 纯空白 / 脏数据条目估 0 秒。duration 仍由画面驱动、不被此约束反向
+        改写。单向：只警告「说不完」（估算超上界），不管「说话太少」。duration 非正整数、无 utterances
+        时跳过——与 ad 总时长漂移那条同样「只 warn 不阻塞」、不推前端。
+        """
+        duration = scene.get("duration_seconds")
+        if not isinstance(duration, int) or isinstance(duration, bool) or duration <= 0:
+            return
+        utterances = scene.get("utterances")
+        if not isinstance(utterances, list):
+            return
+        spoken = 0.0
+        for item in utterances:
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if isinstance(text, str):
+                spoken += estimate_spoken_seconds(text, language)
+        budget = duration * (1 + DRAMA_SPEECH_OVERFLOW_TOLERANCE)
+        if spoken > budget:
+            warnings.append(
+                f"{prefix}: 估算说话时长 {spoken:.1f} 秒超过场景时长 {duration} 秒逾 "
+                f"{DRAMA_SPEECH_OVERFLOW_TOLERANCE:.0%}（容差上界 {budget:.1f} 秒），"
+                f"长对白可能说不完或语速畸快（仅提示，不阻塞保存）"
+            )
 
     def _validate_shots(
         self,
@@ -957,6 +1047,10 @@ class DataValidator:
         if novel is not None and not isinstance(novel, dict):
             errors.append("novel 字段必须是对象")
 
+        # drama 说话量上界 warning 的语速按项目 source_language 取（唯一真相源，缺失 / 脏值回退默认语速）。
+        source_language = project.get("source_language")
+        scene_language = source_language if isinstance(source_language, str) else None
+
         # "视频来源"维度由 generation_mode 表达；content_mode 决定剧本数据排布
         # （segments / scenes / shots）。ad 剧本骨架唯一、不随生成路径更换：
         # 即使 generation_mode=reference_video 也按 shots 校验（见 docs/adr/0033）。
@@ -1017,6 +1111,7 @@ class DataValidator:
                 errors,
                 warnings,
                 project_dir=project_dir,
+                language=scene_language,
             )
 
     def validate_episode(self, project_name: str, episode_file: str) -> ValidationResult:

@@ -80,7 +80,7 @@ def _format_episode_outline_block(episode_outline: dict | None, next_episode_out
         title = episode_outline.get("title")
         title_line = f"本集标题：{title}\n" if title else ""
         parts.append(f"""<episode_outline>
-本集大纲（分集规划设计，剧本改编应覆盖全部故事节点）：
+本集大纲（分集规划设计，剧本内容应覆盖全部故事节点）：
 {title_line}{_format_outline_lines(episode_outline)}
 </episode_outline>""")
         if episode_outline.get("hook") or episode_outline.get("next_episode_teaser"):
@@ -128,58 +128,58 @@ _AMBIANCE_AUDIO_WRITING_GUIDE = (
 
 
 # ---------------------------------------------------------------------------
-# source_kind=screenplay 分支文案（提取优先：台词/画外音逐字保真，只补视觉层）
+# 两段式分层文案（见 ADR 0041）：step1（normalize）= 内容、step2（drama）= 视觉。
 #
-# 默认 source_kind="novel" 走「改编/创作」原文案；screenplay 翻面为「提取/逐字透传」。
-# 逐字只锚「可听见的内容」（台词文字 + 画外音文字）；排版/标签、运镜舞台提示、视觉描述、
-# 泛指群演由 LLM 裁量转写或剥离。下方常量按 source_kind 在两段 builder 间共享。
+# 内容抽取前移到 step1：场景边界、出场资产、逐字口播 utterances、原文锚 source_text、
+# 视觉改编描述 scene_description 一次定稿，并按 source_kind 切「改编 / 提取」口径。
+# step2 只补视觉层（image_prompt / video_prompt），按 scene_id 透传内容、不再识别口播、
+# 不分 source_kind——故 step2 文案无 novel/screenplay 分支。
 # ---------------------------------------------------------------------------
 
-# step2（build_drama_prompt）开篇角色定位
-_DRAMA_ROLE_NOVEL = (
-    "你是一位资深的短剧分镜编剧，精通把改编后的剧本场景表转写为可直接驱动 AI 图像 / 视频生成的结构化分镜。"
-)
-_DRAMA_ROLE_SCREENPLAY = (
-    "你是一位资深的短剧分镜编剧。下方场景表来自作者已写好的成品剧本，你的职责是**转写而非再创作**："
-    "把作者写下的台词与画外音逐字搬进结构化字段，只补剧本没写的视觉生产层（image_prompt / video_prompt）。"
-)
-
-# step2 video_prompt.dialogue 字段指引
-_DRAMA_DIALOGUE_GUIDE_NOVEL = "包含分镜中角色对话；speaker 必须出现在 characters_in_scene。"
-_DRAMA_DIALOGUE_GUIDE_SCREENPLAY = (
-    "把场景描述里作者写下的台词**逐字照搬**（不改写、不润色、不删减、不补写）：line 填台词原文、"
-    "speaker 填原文说话人。命名角色的 speaker 应来自 characters_in_scene；路人群演（如「老人甲」「村民若干」）"
-    "照填其原文称呼即可，speaker 可以不在 characters_in_scene 中。分镜无台词则留空数组。"
-)
-
-# step2 voiceover 字段指引（DramaScene 一等字段，与 dialogue 平级）
-_DRAMA_VOICEOVER_GUIDE_NOVEL = "本项目源自小说、无画外音轨，voiceover 一律留空数组 []。"
-_DRAMA_VOICEOVER_GUIDE_SCREENPLAY = (
-    "把场景描述里标注的画外音 / 旁白原文**逐字填入**（不改写、不删减）：每段一个数组元素，按出现顺序排列；"
-    "分镜无画外音则留空数组 []。画外音无 speaker，不要塞进 dialogue。"
-)
-
-# step2 收尾创作目标
-_DRAMA_GOAL_NOVEL = "输出可直接驱动 AI 生成的、视觉一致、节奏紧凑的分镜剧本。忠于原创设定、保留戏剧张力。"
-_DRAMA_GOAL_SCREENPLAY = (
-    "输出可直接驱动 AI 生成的分镜剧本：台词与画外音忠实于作者原文一字不改，"
-    "视觉层（image_prompt / video_prompt）由你补全，保留剧本的戏剧张力。"
-)
-
 # step1（build_normalize_prompt）开篇任务句
-_NORMALIZE_TASK_NOVEL = "你的任务是将小说原文改编为结构化的分镜场景表（Markdown 格式），用于后续 AI 视频生成。"
+_NORMALIZE_TASK_NOVEL = (
+    "你的任务是将小说原文**改编**为结构化的分镜场景内容（含视觉改编描述、逐字口播 utterances "
+    "与原文锚 source_text），用于后续 AI 视频生成。"
+)
 _NORMALIZE_TASK_SCREENPLAY = (
-    "你的任务是从作者已写好的剧本中**提取**结构化的分镜场景表（Markdown 格式），"
-    "逐字保留台词与画外音，用于后续 AI 视频生成。这是成品剧本、不是待加工的素材——只做提取、不做再创作。"
+    "你的任务是从作者已写好的剧本中**提取**结构化的分镜场景内容："
+    "逐字保留台词与画外音（落在 utterances）、摘录原文锚 source_text、把视觉层转写为场景描述，"
+    "用于后续 AI 视频生成。这是成品剧本、不是待加工的素材——只做提取、不做再创作。"
 )
 
-# step1 场景描述列的填写规则
-_NORMALIZE_SCENE_RULE_NOVEL = "- 场景描述：改编后的剧本化描述，包含角色动作、对话、环境，适合视觉化呈现"
-_NORMALIZE_SCENE_RULE_SCREENPLAY = """- 场景描述：逐字保留「可听见的内容」，原样搬进本列——
-  - 角色台词照搬为 `角色名："台词原文"`，一字不改（不改写、不润色、不删减、不翻译）；路人群演（如「老人甲」）也保留其台词
-  - 画外音 / 旁白照搬为 `【画外音】：原文`，一字不改
-  - 运镜、景别、舞台提示（如「航拍，全景」「压低声音」）转写为画面视觉描述，不要写进台词
-  - 排版符号（markdown、△、各类标签、表格、emoji）一律剥离，只留干净文本"""
+# step1 scene_description（视觉改编自由文本）填写规则——只承载视觉内容，口播不内嵌
+_NORMALIZE_SCENE_RULE_NOVEL = (
+    "改编后的视觉化描述：角色动作、神态、环境、光影氛围，适合画面呈现。"
+    "**台词 / 画外音不要写进这里**——口播统一落在 utterances，本字段只承载视觉内容。"
+)
+_NORMALIZE_SCENE_RULE_SCREENPLAY = (
+    "把作者写下的运镜、景别、舞台提示、视觉场景转写为画面视觉描述。"
+    "**台词 / 画外音不要写进这里**——逐字落在 utterances，本字段只承载视觉内容；"
+    "排版符号（markdown、△、各类标签、表格、emoji）一律剥离，只留干净文本。"
+)
+
+# step1 utterances（场景级有序发声序列）填写规则。每条 {kind, speaker, text}：
+# kind=dialogue 必带非空 speaker、kind=voiceover 必无 speaker（speaker: null）。
+_NORMALIZE_UTTERANCES_NOVEL = (
+    '按口播出现顺序产出发声序列：角色台词写为 `{kind: "dialogue", speaker, text}`'
+    "（speaker 必须出现在 characters_in_scene、text 填台词内容）。"
+    '叙述、心理独白等不靠画面演出的内容，可按剧情语境判断写为画外音 `{kind: "voiceover", speaker: null, text}`——'
+    "是否产出由你依语境创作判断，不预设规则或类别白名单、也不作兜底，自然需要则产出。"
+    "场景无口播则留空数组 []。"
+)
+_NORMALIZE_UTTERANCES_SCREENPLAY = (
+    "把作者写下的台词与画外音**逐字照搬**为有序发声序列，按它们在场景中的先后排列："
+    '角色台词写为 `{kind: "dialogue", speaker, text}`（speaker 填原文说话人：命名角色应来自 '
+    "characters_in_scene，路人群演如「老人甲」「村民若干」照填原文称呼即可、可不在 characters_in_scene；"
+    'text 填台词原文）；画外音 / 旁白写为 `{kind: "voiceover", speaker: null, text}`（无说话人）。'
+    "不改写、不润色、不删减、不补写。场景无口播则留空数组 []。"
+)
+
+# step1 source_text（逐字原文锚）填写规则——两源共用
+_NORMALIZE_SOURCE_TEXT_GUIDE = (
+    "逐字摘录本场景对应的原文片段（追溯锚：用于对照原文、定位失真、为单场景重生成提供依据；"
+    "不被朗读、不出音）。尽量与原文一致、宁缺毋造（best-effort，无把握可留空）。"
+)
 
 # step1 segment_break 规则
 _NORMALIZE_BREAK_RULE_NOVEL = '- segment_break：场景切换点标记"是"，同一连续场景标"否"'
@@ -188,10 +188,49 @@ _NORMALIZE_BREAK_RULE_SCREENPLAY = (
     "同一场次内标「否」；不要重新切碎作者的场次"
 )
 
+# step2（build_drama_prompt）开篇角色定位 + 收尾目标——视觉层专责，无 source_kind 分支
+_DRAMA_VISUAL_ROLE = (
+    "你是一位资深的短剧分镜摄影 / 动作设计师。下方分镜内容（场景边界、出场资产、逐字口播、"
+    "原文锚、视觉改编描述）均已定稿，你的唯一职责是为每个分镜补全视觉生产层："
+    "image_prompt（画面）与 video_prompt（动作 / 运镜 / 环境音）。"
+    "**不要改写或重述口播、不要新增 / 删除 / 重排分镜、不要改动场景内容**——只按 scene_id 逐条产出视觉字段。"
+)
+_DRAMA_VISUAL_GOAL = "输出可直接驱动 AI 图像 / 视频生成的、视觉一致、节奏紧凑的视觉层。忠于已定稿的分镜内容与戏剧张力。"
+
 
 # ---------------------------------------------------------------------------
 # Builder
 # ---------------------------------------------------------------------------
+
+
+def _neutralize_tags(value: str) -> str:
+    """中和动态文本里的尖括号：novel_text / 资产名出现 </segments> 等标签序列时，避免打散
+    标签化 prompt 的块结构。属 prompt 鲁棒性——step2 输出仍由 response_schema 强制，无安全边界。
+    """
+    return value.replace("<", "＜").replace(">", "＞")
+
+
+def _format_narration_step1_segments(step1_segments: list[dict]) -> str:
+    """把 step1 结构化片段渲染为 step2 的只读上下文：segment_id + 内容字段 + 逐字原文。
+
+    这些字段在 step1 已定、step2 透传不重出；此处仅作为「为该片段写好视觉层」的依据呈现。
+    """
+    if not step1_segments:
+        return "（无片段）"
+    lines: list[str] = []
+    for seg in step1_segments:
+        sid = _neutralize_tags(str(seg.get("segment_id", "?")))
+        dur = seg.get("duration_seconds", "?")
+        brk = "，场景切换" if seg.get("segment_break") else ""
+        chars = _neutralize_tags("、".join(seg.get("characters_in_segment") or []) or "无")
+        scene_names = _neutralize_tags("、".join(seg.get("scenes") or []) or "无")
+        prop_names = _neutralize_tags("、".join(seg.get("props") or []) or "无")
+        # 多行 novel_text 续行缩进进原文块，避免 flush-left 溢出 <segments>；尖括号一并中和防注入
+        novel_block = _neutralize_tags(seg.get("novel_text") or "").replace("\n", "\n  ")
+        lines.append(
+            f"- {sid}（时长 {dur}s{brk}）｜出场角色：{chars}｜场景：{scene_names}｜道具：{prop_names}\n  原文：{novel_block}"
+        )
+    return "\n".join(lines)
 
 
 def build_narration_prompt(
@@ -201,24 +240,26 @@ def build_narration_prompt(
     characters: dict,
     scenes: dict,
     props: dict,
-    segments_md: str,
-    supported_durations: list[int],
+    step1_segments: list[dict],
     episode: int,
-    default_duration: int | None = None,
     aspect_ratio: str = "9:16",
     target_language: str = "中文",
 ) -> str:
-    """构建说书模式的剧本生成 prompt。"""
-    character_names = list(characters.keys())
-    scene_names = list(scenes.keys())
-    prop_names = list(props.keys())
+    """构建说书模式 step2（视觉层）prompt。
+
+    step1 已定的 novel_text / 时长 / segment_break / 出场角色 / 场景 / 道具按 segment_id
+    透传，step2 只产 image_prompt 与 video_prompt。``<segments>`` 块为只读上下文，
+    LLM 不重出这些字段——novel_text 由此不再经 step2 的 LLM 扩写漂移。
+    """
     pacing_block = (render_pacing_section("narration") + "\n\n") if is_v2_enabled() else ""
+    segments_block = _format_narration_step1_segments(step1_segments)
 
     return f"""# 角色与任务
 
-你是一位资深的短视频分镜编剧，专精把小说片段改写为可直接驱动 AI 图像 / 视频生成的结构化分镜剧本。
-你的任务：基于下方"小说片段拆分表"，逐条产出符合 schema 的 JSON 剧本。
+你是一位资深的短视频分镜编剧，专精把已定稿的小说片段转化为可直接驱动 AI 图像 / 视频生成的视觉分镜。
+你的任务：基于下方已定稿的"片段表"，为**每个片段**产出视觉层（image_prompt 与 video_prompt），按 segment_id 一一对齐。
 
+**只产视觉层**：novel_text、时长、segment_break、出场角色 / 场景 / 道具均已在 step1 定稿、按 segment_id 透传，**不要重复输出、不要改写**；你只产出 image_prompt 与 video_prompt。
 **输出语言**：所有字符串值必须使用 {target_language}；JSON 键名 / 枚举值保持英文。
 **结构约束**：字段 / 枚举 / 必填项由 response_schema 强制；本提示只解释**如何写好每个字段的内容**。
 
@@ -251,29 +292,18 @@ def build_narration_prompt(
 </props>
 
 <segments>
-{segments_md}
+{segments_block}
 </segments>
 
-segments 表每行是一个待生成的片段，包含：片段 ID（E{episode}S{{序号}}，当前为第 {episode} 集）、小说原文、{_format_duration_constraint(supported_durations, default_duration)}、是否含对话、是否为 segment_break。
+segments 表每个片段已定稿（segment_id、逐字原文、时长、出场角色 / 场景 / 道具、是否场景切换），为只读上下文。
 
 <episode_constraints>
-当前正在生成第 {episode} 集。本集所有 segment_id 必须严格使用 `E{episode}S{{两位序号}}` 格式（如 E{episode}S01、E{episode}S02），不得使用其他集号前缀。
-若 segments 表里出现非 `E{episode}` 前缀（如 E1S..），视为脏数据，请按当前集号 `E{episode}` 重写。
+当前正在生成第 {episode} 集。为每个片段输出一条视觉层，其 segment_id 必须与 segments 表逐字一致——逐一对应，不增、不减、不改写。
 </episode_constraints>
 
 # 字段写作指引
 
-对每个片段，按下列章节填写字段。
-
-## 基础字段
-
-- **novel_text**：原样复制小说原文，不修改、不删改标点。
-- **characters_in_segment** / **scenes** / **props**：仅列出此片段画面或对话中实际出现的资产。
-  - 候选 characters：[{", ".join(character_names) or "（无）"}]
-  - 候选 scenes：[{", ".join(scene_names) or "（无）"}]
-  - 候选 props：[{", ".join(prop_names) or "（无）"}]
-  - 不要发明候选之外的名称。
-- **segment_break** / **duration_seconds**：与 segments 表保持一致。
+为每个片段产出下列视觉字段（其余字段由 step1 透传，勿输出）。
 
 ## 图片提示词（image_prompt）——切换到「摄影师」视角
 
@@ -287,68 +317,96 @@ segments 表每行是一个待生成的片段，包含：片段 ID（E{episode}S
 - **video_prompt.action**：{_ACTION_WRITING_GUIDE}
 - **video_prompt.camera_motion**：每个片段只选一种，按画面内容自行选择。
 - **video_prompt.ambiance_audio**：{_AMBIANCE_AUDIO_WRITING_GUIDE}
-- **video_prompt.dialogue**：仅当小说原文带引号对话时填写；speaker 必须出现在 characters_in_segment。
+- **video_prompt.dialogue**：仅当该片段原文带引号对话时填写；speaker 必须出现在该片段的出场角色中。
 
 # 创作目标
 
-输出可直接驱动 AI 生成的、视觉一致、节奏紧凑的分镜剧本。忠于原文叙事、保留情绪张力。
+输出可直接驱动 AI 生成的、视觉一致、节奏紧凑的分镜视觉层。忠于原文叙事、保留情绪张力。
 """
+
+
+def render_drama_content_for_step2(content_scenes: list) -> str:
+    """把 step1 已定稿的场景内容渲染为 step2 视觉生成的输入块（每分镜一段）。
+
+    口播 / 原文锚仅供 LLM 理解戏剧节奏，明确标注「不要复制进视觉字段」——它们由后端按 scene_id
+    透传（见 ``merge_drama_visual_into_scenes``），step2 只产出 image_prompt / video_prompt。
+
+    渲染结果嵌入 step2 prompt 的 ``<shots>`` 块：资产名 / utterances 字段先判 ``isinstance(_, list)``——
+    降级 / 手改 step1 可能写成非列表值（字符串会被逐字符迭代、数字会抛 TypeError），非列表按空处理；
+    列表内再按 ``isinstance(_, str)`` 过滤非字符串脏数据。所有动态文本过 ``_neutralize_tags`` 中和尖括号——
+    逐字 source_text / utterances / scene_description 含 ``<...>`` 时不致打散标签块结构（与 narration 的
+    ``_format_narration_step1_segments`` 同口径）。本函数 fail-soft：结构性 fail-loud 在上游 _load_drama_step1_content。
+    """
+    if not content_scenes:
+        return "（无分镜内容）"
+    blocks: list[str] = []
+    for scene in content_scenes:
+        if not isinstance(scene, dict):
+            continue
+        sid = _neutralize_tags(str(scene.get("scene_id") or "?"))
+        duration = scene.get("duration_seconds")
+        header = f"### {sid}" + (f"（时长 {duration} 秒）" if duration else "")
+        lines = [header]
+        raw_chars = scene.get("characters_in_scene")
+        raw_scenes_ref = scene.get("scenes")
+        raw_props_ref = scene.get("props")
+        chars = [c for c in raw_chars if isinstance(c, str)] if isinstance(raw_chars, list) else []
+        scenes_ref = [s for s in raw_scenes_ref if isinstance(s, str)] if isinstance(raw_scenes_ref, list) else []
+        props_ref = [p for p in raw_props_ref if isinstance(p, str)] if isinstance(raw_props_ref, list) else []
+        lines.append(
+            f"出场资产：角色 [{_neutralize_tags(', '.join(chars) or '无')}]、"
+            f"场景 [{_neutralize_tags(', '.join(scenes_ref) or '无')}]、道具 [{_neutralize_tags(', '.join(props_ref) or '无')}]"
+        )
+        scene_desc = _neutralize_tags(str(scene.get("scene_description") or "（无）")).replace("\n", "\n  ")
+        lines.append(f"视觉改编：{scene_desc}")
+        raw_utterances = scene.get("utterances")
+        utterances = raw_utterances if isinstance(raw_utterances, list) else []
+        if utterances:
+            lines.append("口播（仅供理解戏剧节奏，不要复制进视觉字段）：")
+            for u in utterances:
+                if not isinstance(u, dict):
+                    continue
+                text = _neutralize_tags(str(u.get("text") or "")).replace("\n", "\n    ")
+                if u.get("kind") == "dialogue":
+                    speaker = _neutralize_tags(str(u.get("speaker") or ""))
+                    lines.append(f"  - [台词] {speaker}：{text}")
+                else:
+                    lines.append(f"  - [画外音] {text}")
+        source_text = scene.get("source_text")
+        if source_text:
+            source_block = _neutralize_tags(str(source_text)).replace("\n", "\n  ")
+            lines.append(f"原文锚（仅供理解，不要复制进视觉字段）：{source_block}")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
 
 
 def build_drama_prompt(
     project_overview: dict,
     style: str,
     style_description: str,
-    characters: dict,
-    scenes: dict,
-    props: dict,
-    scenes_md: str,
-    supported_durations: list[int],
+    scenes_content: str,
     episode: int,
-    default_duration: int | None = None,
     aspect_ratio: str = "16:9",
     target_language: str = "中文",
-    episode_outline: dict | None = None,
-    next_episode_outline: dict | None = None,
-    source_kind: str = "novel",
 ) -> str:
-    """构建剧集动画模式的剧本生成 prompt。
+    """构建剧集动画模式 step2（视觉层）prompt。
 
-    ``episode_outline`` / ``next_episode_outline`` 来自分集账本（title / hook /
-    story_beats / next_episode_teaser），None 表示账本无规划数据，prompt 不渲染大纲段。
-
-    ``source_kind="screenplay"`` 时翻为「提取/逐字透传」：台词逐字照搬进
-    ``video_prompt.dialogue``、画外音逐字落入 ``voiceover``，泛指 speaker 放宽；
-    默认 ``"novel"`` 维持原「改编/创作」语义、voiceover 留空。
+    内容抽取前移到 step1（见 ADR 0041）：场景边界、出场资产、逐字口播 utterances、原文锚
+    source_text、视觉改编描述均已在 step1 定稿，``scenes_content`` 是其渲染输入
+    （``render_drama_content_for_step2``）。step2 仅产出视觉层（image_prompt / video_prompt），
+    LLM 输出按 scene_id 与 step1 内容对齐、由后端合并；不再按 source_kind 分支、不再识别口播、
+    不再标注资产或时长——这些都是 step1 的职责。
     """
-    character_names = list(characters.keys())
-    scene_names = list(scenes.keys())
-    prop_names = list(props.keys())
     pacing_block = (render_pacing_section("drama") + "\n\n") if is_v2_enabled() else ""
-    outline_block = _format_episode_outline_block(episode_outline, next_episode_outline)
-
-    is_screenplay = source_kind == "screenplay"
-    role_task = _DRAMA_ROLE_SCREENPLAY if is_screenplay else _DRAMA_ROLE_NOVEL
-    dialogue_guide = _DRAMA_DIALOGUE_GUIDE_SCREENPLAY if is_screenplay else _DRAMA_DIALOGUE_GUIDE_NOVEL
-    voiceover_guide = _DRAMA_VOICEOVER_GUIDE_SCREENPLAY if is_screenplay else _DRAMA_VOICEOVER_GUIDE_NOVEL
-    creative_goal = _DRAMA_GOAL_SCREENPLAY if is_screenplay else _DRAMA_GOAL_NOVEL
-    # screenplay 下台词 / 说话人 / 画外音逐字保真，必须排除在目标语言要求之外：line、voiceover
-    # 逐字保留原文，speaker 是角色资产引用键（须等于登记角色名），任一被翻译都会与 project.json 资产失配
-    language_rule = (
-        f"除 `video_prompt.dialogue[].line`、`video_prompt.dialogue[].speaker` 与 `voiceover[]` 外，"
-        f"所有字符串值必须使用 {target_language}；这些字段逐字保留剧本原文、不翻译、不改写"
-        "（speaker 沿用 characters_in_scene 中登记的角色名原文，群演沿用原文称呼）。JSON 键名 / 枚举值保持英文。"
-        if is_screenplay
-        else f"所有字符串值必须使用 {target_language}；JSON 键名 / 枚举值保持英文。"
-    )
 
     return f"""# 角色与任务
 
-{role_task}
-你的任务：基于下方"分镜拆分表"，逐条产出符合 schema 的 JSON 剧本。
+{_DRAMA_VISUAL_ROLE}
+你的任务：基于下方已定稿的"分镜内容"，为每个 scene_id 逐条产出视觉层 JSON（image_prompt / video_prompt）。
 
-**输出语言**：{language_rule}
+**输出语言**：所有字符串值必须使用 {target_language}；JSON 键名 / 枚举值保持英文。
 **结构约束**：字段 / 枚举 / 必填项由 response_schema 强制；本提示只解释**如何写好每个字段的内容**。
+**对齐约束**：每个分镜产出一条视觉层，`scene_id` 必须与下方内容逐字一致、不增不减不改；不要输出口播 / 时长 / 资产等非视觉字段。
 
 {pacing_block}# 上下文
 
@@ -366,41 +424,17 @@ def build_drama_prompt(
 画面比例：{aspect_ratio}（{_format_aspect_ratio_desc(aspect_ratio)}）
 </style>
 
-<characters>
-{_format_names(characters)}
-</characters>
-
-<project_scenes>
-{_format_names(scenes)}
-</project_scenes>
-
-<props>
-{_format_names(props)}
-</props>
-
 <shots>
-{scenes_md}
+{scenes_content}
 </shots>
 
-shots 表每行是一个分镜，包含：分镜 ID（E{episode}S{{序号}}，当前为第 {episode} 集）、分镜描述、{_format_duration_constraint(supported_durations, default_duration)}、是否为 segment_break。
-
-{outline_block}<episode_constraints>
-当前正在生成第 {episode} 集。本集所有 scene_id 必须严格使用 `E{episode}S{{两位序号}}` 格式（如 E{episode}S01、E{episode}S02），不得使用其他集号前缀。
-若 shots 表里出现非 `E{episode}` 前缀（如 E1S..），视为脏数据，请按当前集号 `E{episode}` 重写。
+<episode_constraints>
+当前正在生成第 {episode} 集。每条视觉层的 scene_id 必须逐字等于上方分镜内容里的 scene_id；若该 ID 含拆分/编辑后缀（如 `_1`），也必须原样保留，不得改写、合并或新增。
 </episode_constraints>
 
 # 字段写作指引
 
-对每个分镜，按下列章节填写字段。
-
-## 基础字段
-
-- **characters_in_scene** / **scenes** / **props**：仅列出此分镜画面或对话中实际出现的资产。
-  - 候选 characters：[{", ".join(character_names) or "（无）"}]
-  - 候选 scenes：[{", ".join(scene_names) or "（无）"}]
-  - 候选 props：[{", ".join(prop_names) or "（无）"}]
-  - 不要发明候选之外的名称。
-- **segment_break** / **duration_seconds**：与 shots 表保持一致。
+对每个分镜，按下列章节填写视觉字段。
 
 ## 图片提示词（image_prompt）——切换到「摄影师」视角
 
@@ -414,15 +448,10 @@ shots 表每行是一个分镜，包含：分镜 ID（E{episode}S{{序号}}，�
 - **video_prompt.action**：{_ACTION_WRITING_GUIDE}
 - **video_prompt.camera_motion**：每个分镜只选一种，按画面内容自行选择。
 - **video_prompt.ambiance_audio**：{_AMBIANCE_AUDIO_WRITING_GUIDE}
-- **video_prompt.dialogue**：{dialogue_guide}
-
-## 画外音（voiceover）
-
-- **voiceover**：{voiceover_guide}
 
 # 创作目标
 
-{creative_goal}
+{_DRAMA_VISUAL_GOAL}
 """
 
 
@@ -437,26 +466,54 @@ def build_normalize_prompt(
     supported_durations: list[int],
     episode: int,
     source_kind: str = "novel",
+    target_language: str = "中文",
+    episode_outline: dict | None = None,
+    next_episode_outline: dict | None = None,
 ) -> str:
-    """Step-1 normalization prompt: source text → markdown scene table.
+    """Step-1 规范化 prompt：源文 → 结构化分镜内容（utterances + source_text + 视觉改编描述）。
 
-    Consumed by ``normalize_drama_script`` MCP tool. Sibling of
-    ``build_drama_prompt`` (step 2 of the drama pipeline).
+    由 ``normalize_drama_script`` MCP tool 消费。内容抽取前移（见 ADR 0041）：step1 一次定稿场景
+    边界、出场资产、逐字口播、原文锚与视觉改编描述，step2 仅透传 + 补视觉。输出受 response_schema
+    （``DramaNormalizedScript``）约束为结构化 JSON。
 
-    ``source_kind="screenplay"`` 时翻为「提取/逐字保留」：场景描述列照搬作者写下的
-    台词与画外音原文（供 step2 逐字透传），不做改编；默认 ``"novel"`` 维持「改编」语义。
+    ``source_kind="screenplay"`` 翻为「提取/逐字保留」：台词与画外音逐字落 utterances、视觉转写为
+    scene_description；默认 ``"novel"`` 维持「改编」语义、画外音由语境判断放开。``episode_outline`` /
+    ``next_episode_outline`` 来自分集账本，驱动内容覆盖故事节点、末场落地集尾钩子。
     """
     char_list = _format_names(characters)
     scene_list = _format_names(scenes)
     prop_list = _format_names(props)
+    character_names = list(characters.keys())
+    scene_names = list(scenes.keys())
+    prop_names = list(props.keys())
 
     is_screenplay = source_kind == "screenplay"
     task_line = _NORMALIZE_TASK_SCREENPLAY if is_screenplay else _NORMALIZE_TASK_NOVEL
     source_heading = "剧本原文" if is_screenplay else "小说原文"
     source_tag = "screenplay" if is_screenplay else "novel"
-    output_intro = "将剧本提取为场景列表" if is_screenplay else "将小说改编为场景列表"
     scene_rule = _NORMALIZE_SCENE_RULE_SCREENPLAY if is_screenplay else _NORMALIZE_SCENE_RULE_NOVEL
+    utterances_rule = _NORMALIZE_UTTERANCES_SCREENPLAY if is_screenplay else _NORMALIZE_UTTERANCES_NOVEL
     break_rule = _NORMALIZE_BREAK_RULE_SCREENPLAY if is_screenplay else _NORMALIZE_BREAK_RULE_NOVEL
+    outline_block = _format_episode_outline_block(episode_outline, next_episode_outline)
+
+    # 资产引用字段（characters_in_scene / scenes / props，须逐字等于 project.json 登记名）与
+    # 说话人引用 `utterances[].speaker`（须等于 characters_in_scene 中登记的角色名）须排除在目标语言要求外——
+    # 两者被翻译都会与已登记资产失配（speaker 失配会破坏字幕归属 / 后续 TTS 配音映射）。source_text 是逐字
+    # 原文锚、两源都摘录原文不译。screenplay 额外把台词 `utterances[].text` 也逐字保留（提取优先）；
+    # novel 的台词 text 仍按目标语言改编。
+    if is_screenplay:
+        language_rule = (
+            "除资产引用字段（`characters_in_scene[]` / `scenes[]` / `props[]`，须逐字等于 project.json 登记名）"
+            "与逐字字段（`utterances[].text` / `utterances[].speaker` / `source_text`）外，"
+            f"其余自然语言字符串值必须使用 {target_language}；上述豁免字段逐字保留原文、不翻译、不改写"
+            "（speaker 沿用 characters_in_scene 中登记的角色名原文，群演沿用原文称呼）。JSON 键名 / 枚举值保持英文。"
+        )
+    else:
+        language_rule = (
+            "除资产引用字段（`characters_in_scene[]` / `scenes[]` / `props[]`，须逐字等于 project.json 登记名）、"
+            "说话人引用 `utterances[].speaker`（须等于 characters_in_scene 中登记的角色名、不翻译）"
+            f"与逐字原文锚 `source_text` 外，其余自然语言字符串值必须使用 {target_language}；JSON 键名 / 枚举值保持英文。"
+        )
 
     # 规范化 + 校验：空集合或 default 不在集合内都会产出自相矛盾的提示词，
     # 让生成阶段失败比让 LLM 见到"只能取 — 中的值"更便于诊断（PR #528 review）。
@@ -468,22 +525,24 @@ def build_normalize_prompt(
 
     durations_str = ", ".join(str(d) for d in normalized_durations)
     max_dur = normalized_durations[-1]
-
     if default_duration is not None:
-        duration_rules = (
-            f"- 时长：只能取 {durations_str} 中的值（该视频模型支持的秒数集合）\n"
-            f"- 每场景默认 {default_duration} 秒；打斗、大场面、情绪铺陈等画面可取更长值至上限 {max_dur} 秒，"
-            "不要默认挑最短值"
+        duration_rule = (
+            f"只能取 {durations_str} 中的值（该视频模型支持的秒数集合）；默认 {default_duration} 秒，"
+            f"打斗 / 大场面 / 情绪铺陈等画面可取更长值至上限 {max_dur} 秒，不要默认挑最短值"
         )
     else:
-        duration_rules = (
-            f"- 时长：只能取 {durations_str} 中的值（该视频模型支持的秒数集合）\n"
-            f"- 按画面内容复杂度匹配合适时长（最长 {max_dur} 秒），不强制默认值"
+        duration_rule = (
+            f"只能取 {durations_str} 中的值（该视频模型支持的秒数集合）；"
+            f"按画面内容复杂度匹配合适时长（最长 {max_dur} 秒），不强制默认值"
         )
+    pacing_block = (render_pacing_section("drama") + "\n\n") if is_v2_enabled() else ""
 
     return f"""{task_line}
 
-## 项目信息
+**输出语言**：{language_rule}
+**结构约束**：字段 / 枚举 / 必填项由 response_schema 强制；本提示只解释**如何写好每个字段的内容**。
+
+{pacing_block}## 项目信息
 
 <overview>
 {project_overview.get("synopsis", "")}
@@ -515,24 +574,28 @@ def build_normalize_prompt(
 {novel_text}
 </{source_tag}>
 
-## 输出要求
+{outline_block}# 字段写作指引
 
-{output_intro}，使用 Markdown 表格格式：
+把源文拆为有序分镜，逐条产出符合 schema 的结构化场景内容。当前正在生成第 {episode} 集；所有 scene_id 必须用 `E{episode}S{{两位序号}}` 格式（如 E{episode}S01），不得用其他集号前缀。
 
-| 场景 ID | 场景描述 | 时长 | segment_break |
-|---------|---------|------|---------------|
-| E{episode}S01 | 详细的场景描述... | <duration> | 是 |
-| E{episode}S02 | 详细的场景描述... | <duration> | 否 |
+## 基础字段
 
-规则：
-- 当前正在生成第 {episode} 集；所有场景 ID 必须使用 `E{episode}S{{两位序号}}` 格式，不得使用其他集号前缀
-{scene_rule}
-{duration_rules}
+- **scene_id**：`E{episode}S{{两位序号}}`，按分镜顺序递增。
+- **duration_seconds**：{duration_rule}。
 {break_rule}
-- 每个场景应为一个独立的视觉画面，可以在指定时长内完成
-- 避免一个场景包含多个不同的动作或画面切换
+- **characters_in_scene** / **scenes** / **props**：仅列出此分镜实际出现的资产。
+  - 候选 characters：[{", ".join(character_names) or "（无）"}]
+  - 候选 scenes：[{", ".join(scene_names) or "（无）"}]
+  - 候选 props：[{", ".join(prop_names) or "（无）"}]
+  - 不要发明候选之外的名称；泛指群演（如「老人甲」「村民若干」）不登记为角色资产、不进 characters_in_scene。
+- **scene_description**：{scene_rule}
 
-仅输出 Markdown 表格，不要包含其他解释文字。
+## 逐字内容（内容真相源，step2 透传不改）
+
+- **source_text**：{_NORMALIZE_SOURCE_TEXT_GUIDE}
+- **utterances**：{utterances_rule}
+
+每个分镜应为一个独立的视觉画面、可在指定时长内完成；避免一个分镜塞入多个动作或画面切换。
 """
 
 

@@ -48,8 +48,8 @@ description: 将小说转换为短视频的端到端工作流编排器。当用�
 2. 目标集在账本（project.json `episodes[]`）中没有条目？ → **阶段 2**。分集接续状态**只读账本**：条目的 `ledger_status` 标记每集状态（planned 已规划 / consumed 已消费 / stale 重排后失效需重做 / unanchored 失锚锁定），顶层 `planning_cursor` 标记下一批规划起点；**不要用 Glob 文件名推断集数**（`source/episode_{N}.txt` 只是账本的派生物）
 3. 目标集 `ledger_status` 为 `stale`（重排后失效——旧 step1/剧本/媒体一律视为失效，即使文件还在也从本阶段起重做，产物沿版本机制替换），或目标集**当前组合对应的** step1 中间文件不存在？ → **阶段 3**。按 `effective_mode(project, episode)` × `content_mode` 三分支检查对应文件（注意 effective_mode 含集级 `episodes[i].generation_mode` 覆盖，不能只看项目顶层字段）：
    - effective_mode == reference_video（任一 content_mode）: `drafts/episode_{N}/step1_reference_units.md`
-   - effective_mode ∈ {storyboard, grid} 且 content_mode == narration: `drafts/episode_{N}/step1_segments.md`
-   - effective_mode ∈ {storyboard, grid} 且 content_mode == drama: `drafts/episode_{N}/step1_normalized_script.md`
+   - effective_mode ∈ {storyboard, grid} 且 content_mode == narration: `drafts/episode_{N}/step1_segments.json`
+   - effective_mode ∈ {storyboard, grid} 且 content_mode == drama: `drafts/episode_{N}/step1_normalized_script.json`（结构化内容）
 
    本项目 content_mode 固定为 narration（创建后不可变），故只会命中第 1 或第 2 分支，取决于该集的 effective_mode。只认当前组合对应的那一个文件：目录中出现**其他模式的 `step1_*` 文件**属残留，不作为阶段 3 已完成的依据。
 4. scripts/episode_{N}.json 不存在？ → **阶段 4**（另见阶段 4 触发条件：本次会话中阶段 3 中间文件被修改/重拆时，即使 JSON 存在也须重生）
@@ -121,7 +121,7 @@ description: 将小说转换为短视频的端到端工作流编排器。当用�
 根据 `effective_mode(project, episode)` 选择 subagent：
 
 - `effective_mode == reference_video` → dispatch `split-reference-video-units`（产出 `drafts/episode_{N}/step1_reference_units.md`）
-- 否则（本项目 content_mode == narration）→ dispatch `split-narration-segments`（产出 `drafts/episode_{N}/step1_segments.md`）
+- 否则（本项目 content_mode == narration）→ dispatch `split-narration-segments`（产出 `drafts/episode_{N}/step1_segments.json`）
 
 dispatch prompt 通用参数：项目名称、项目路径、集数、本集小说文件路径。
 
@@ -139,6 +139,8 @@ dispatch prompt 通用参数：项目名称、项目路径、集数、本集小�
 **触发**（满足其一）：
 - `scripts/episode_{N}.json` 不存在
 - 阶段 3 的中间文件在本次会话中被修改或重拆（此时即使 JSON 已存在也必须重生）
+
+**step1→step2 审核 gate（阻塞）**：阶段 3 的结构化 step1 中间态须经**显式确认**才放行本阶段（仅结构化 step1 适用；`reference_video` 路径的 step1 是自由文本 md、不走本 gate，无需确认、也不要对其调用 `confirm_script_review`）。两条等价确认路径——用户在 Web 端审阅 / 编辑后确认，或在对话中明确同意进入视觉生成后由你调用 `mcp__arcreel__confirm_script_review({"episode": N})`（全自主模式下按用户总体授权确认）。未确认（或确认后 step1 又被改）时 `generate_episode_script` 会被 gate 拒绝；**存量项目**（升级前已生成过本集剧本）已 grandfather 放行、无需再确认。
 
 **dispatch `create-episode-script` subagent**：传入项目名称、项目路径、集数。
 

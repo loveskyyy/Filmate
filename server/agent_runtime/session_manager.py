@@ -27,7 +27,7 @@ from lib.agent_session_store import session_store_flush_mode
 from lib.agent_session_store.store import DbSessionStore
 from lib.db.base import DEFAULT_USER_ID
 from lib.db.engine import async_session_factory as default_async_session_factory
-from lib.i18n import LOCALE_LANGUAGE_MAP
+from lib.i18n import DEFAULT_LOCALE, LOCALE_LANGUAGE_MAP
 from lib.logging_config import resolve_log_dir
 from server.agent_runtime.message_utils import extract_plain_user_content
 from server.agent_runtime.models import SessionMeta, SessionStatus
@@ -541,13 +541,14 @@ class SessionManager:
 - Write/Edit 不要写入代码文件（扩展名 .py/.js/.ts/.tsx/.sh/.yaml/.yml/.toml）；数据文件（.json/.md/.txt/.html/.csv 等）可以正常写入。代码逻辑应通过现有 skill 脚本完成
 - 你是用户的视频制作搭档，专业、友善、高效"""
 
-    def _build_append_prompt(self, project_name: str, locale: str = "zh") -> str:
+    def _build_append_prompt(self, project_name: str, locale: str = DEFAULT_LOCALE) -> str:
         """Build the append portion for SystemPromptPreset.
 
-        Combines the ArcReel persona with project-specific context from
-        project.json.  The base CLAUDE.md is auto-loaded by the SDK via
-        setting_sources=["project"] and the CLAUDE.md symlink in the
-        project cwd.
+        Combines the ArcReel persona, the locale language regulation, and the
+        session-invariant project context (identity, cwd, operating rules).
+        Mutable project metadata is not included here — it lives in project.json
+        and is read on demand. The project's CLAUDE.md (mode variant projected
+        into the cwd) is auto-loaded by the SDK via setting_sources=["project"].
         """
         parts = [self._PERSONA_PROMPT]
 
@@ -567,71 +568,27 @@ class SessionManager:
         return "\n".join(parts)
 
     def _build_project_context(self, project_name: str) -> str:
-        """Build project-specific context from project.json metadata."""
+        """Build session-invariant project context for the system prompt.
+
+        Holds only facts that cannot change within a session: project identity,
+        cwd, and static operating rules. Mutable metadata (title, style,
+        overview, ...) lives in project.json and is read on demand by the agent
+        and tools — never baked into the session-fixed system prompt.
+        """
         try:
             project_cwd = self._resolve_project_cwd(project_name)
         except (ValueError, FileNotFoundError):
             return ""
 
-        project_json = project_cwd / "project.json"
-        if not project_json.exists():
-            return ""
-
-        try:
-            config = json.loads(project_json.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Failed to read project.json for %s: %s", project_name, exc)
-            return ""
-
-        if not isinstance(config, dict):
-            logger.warning("project.json for %s is not a JSON object", project_name)
-            return ""
-
         parts = [
             "## 当前项目上下文",
             "",
+            f"- 项目标识：{project_name}",
+            f"- 项目目录（即当前工作目录 cwd）：{project_cwd.as_posix()}",
+            "- 项目元数据（标题、风格、概述等）存于 project.json，需要时读取。",
+            "- Bash 命令必须写在单行，禁止使用 `\\` 换行，JSON 参数使用紧凑格式。",
         ]
-
-        # TODO: 当前定位是自部署服务，这里直接拼接项目元数据以保持实现简单。
-        # TODO: 若后续演进为 SaaS / 多租户服务，需要把 title/style/overview 等用户输入
-        # TODO: 按“非指令上下文”做边界化或转义，降低 prompt injection 风险。
-        parts.append(f"- 项目标识：{project_name}")
-        if title := config.get("title"):
-            parts.append(f"- 项目标题：{title}")
-        if mode := config.get("content_mode"):
-            parts.append(f"- 内容模式：{mode}")
-        if style := config.get("style"):
-            parts.append(f"- 视觉风格：{style}")
-        if style_desc := config.get("style_description"):
-            parts.append(f"- 风格描述：{style_desc}")
-        parts.append(f"- 项目目录（即当前工作目录 cwd）：{project_cwd}")
-        parts.append(
-            "- Read/Edit/Write 等工具的 file_path 参数必须使用绝对路径，不要使用相对路径，也不要把项目标题当成目录名。"
-        )
-        parts.append(
-            "- Bash 调用 skill 脚本时必须使用相对路径（如 `python .claude/skills/.../script.py`），不要转换为绝对路径。"
-        )
-        parts.append("- Bash 命令必须写在单行，禁止使用 `\\` 换行，JSON 参数使用紧凑格式。")
-
-        self._append_overview_section(parts, config.get("overview", {}))
-
         return "\n".join(parts)
-
-    @staticmethod
-    def _append_overview_section(parts: list[str], overview: Any) -> None:
-        """Append project overview fields to prompt parts."""
-        if not isinstance(overview, dict) or not overview:
-            return
-        parts.append("")
-        parts.append("### 项目概述")
-        if synopsis := overview.get("synopsis"):
-            parts.append(synopsis)
-        if genre := overview.get("genre"):
-            parts.append(f"- 题材：{genre}")
-        if theme := overview.get("theme"):
-            parts.append(f"- 主题：{theme}")
-        if world := overview.get("world_setting"):
-            parts.append(f"- 世界观：{world}")
 
     def _build_session_store(self) -> DbSessionStore | None:
         """Return a cached per-user DbSessionStore, or None when env disables it.
@@ -685,7 +642,7 @@ class SessionManager:
         project_name: str,
         resume_id: str | None = None,
         can_use_tool: Callable[[str, dict[str, Any], Any], Any] | None = None,
-        locale: str = "zh",
+        locale: str = DEFAULT_LOCALE,
         stderr: Callable[[str], None] | None = None,
     ) -> Any:
         """Build ClaudeAgentOptions for a session.
@@ -1281,7 +1238,7 @@ class SessionManager:
         *,
         echo_text: str | None = None,
         echo_content: list[dict[str, Any]] | None = None,
-        locale: str = "zh",
+        locale: str = DEFAULT_LOCALE,
     ) -> str:
         """Create a new session via send-first: start actor, send query, wait for sdk_session_id."""
         if not SDK_AVAILABLE or ClaudeSDKClient is None:
@@ -1483,8 +1440,17 @@ class SessionManager:
                 logger.debug("_mark_session_terminal cleanup failed", exc_info=True)
             raise
 
-    async def get_or_connect(self, session_id: str, *, meta: Optional["SessionMeta"] = None) -> ManagedSession:
-        """Get existing managed session or spin up an actor for resumed session."""
+    async def get_or_connect(
+        self, session_id: str, *, meta: Optional["SessionMeta"] = None, locale: str = DEFAULT_LOCALE
+    ) -> ManagedSession:
+        """Get existing managed session or spin up an actor for resumed session.
+
+        ``locale`` only matters when this call revives a cold session: the SDK's
+        ``resume`` rebuilds the whole system prompt from current options, so the
+        language regulation segment must reflect the caller's request locale. An
+        already-resident session returns from cache and ``locale`` is ignored —
+        the session-fixed system prompt stays unchanged.
+        """
         if session_id in self.sessions and session_id not in self._disconnecting:
             return self.sessions[session_id]
 
@@ -1520,6 +1486,7 @@ class SessionManager:
                 meta.project_name,
                 meta.id,  # SessionMeta.id 就是 sdk_session_id
                 can_use_tool=await self._build_can_use_tool_callback(session_id, managed_ref),
+                locale=locale,
                 stderr=_collect_stderr,
             )
             assistant_model = self._resolve_configured_assistant_model(getattr(options, "env", None))
@@ -1571,9 +1538,15 @@ class SessionManager:
         echo_text: str | None = None,
         echo_content: list[dict[str, Any]] | None = None,
         meta: Optional["SessionMeta"] = None,
+        locale: str = DEFAULT_LOCALE,
     ) -> None:
-        """Send a message via the session actor."""
-        managed = await self.get_or_connect(session_id, meta=meta)
+        """Send a message via the session actor.
+
+        ``locale`` is forwarded to ``get_or_connect`` so a cold-recovered
+        session rebuilds its language regulation from the current request's
+        locale rather than the default.
+        """
+        managed = await self.get_or_connect(session_id, meta=meta, locale=locale)
         managed.last_activity = time.monotonic()
         # 取消待执行的 cleanup（会话恢复活跃）
         if managed._cleanup_task and not managed._cleanup_task.done():
@@ -2867,7 +2840,9 @@ class SessionManager:
         if not managed.resolve_pending_question(question_id, answers):
             raise ValueError("未找到待回答的问题")
 
-    async def _subscribe(self, session_id: str, *, replay: bool = True) -> tuple[asyncio.Queue, list[dict[str, Any]]]:
+    async def _subscribe(
+        self, session_id: str, *, replay: bool = True, locale: str = DEFAULT_LOCALE
+    ) -> tuple[asyncio.Queue, list[dict[str, Any]]]:
         """Register a live-message queue and capture the replay snapshot atomically.
 
         Returns the (live-only) queue plus a snapshot of the buffered messages.
@@ -2875,10 +2850,14 @@ class SessionManager:
         between, so no synchronous live broadcast can interleave between the two
         and be lost — the replay/live split has no race.
 
+        ``locale`` is forwarded to ``get_or_connect`` so reviving a cold session
+        through the stream path rebuilds its language regulation from the current
+        request's locale, matching the send-message path.
+
         Private: the only consumer is :meth:`stream_messages`, which owns the
         deterministic unsubscribe via its context-manager ``__aexit__``.
         """
-        managed = await self.get_or_connect(session_id)
+        managed = await self.get_or_connect(session_id, locale=locale)
         # Synchronous critical section — no ``await`` until registration completes.
         replay_snapshot = list(managed.message_buffer) if replay else []
         queue: asyncio.Queue = asyncio.Queue(maxsize=100)
@@ -2892,7 +2871,7 @@ class SessionManager:
 
     @contextlib.asynccontextmanager
     async def stream_messages(
-        self, session_id: str, *, replay: bool = True, idle_timeout: float = 20.0
+        self, session_id: str, *, replay: bool = True, idle_timeout: float = 20.0, locale: str = DEFAULT_LOCALE
     ) -> AsyncIterator[AsyncIterator[dict[str, Any]]]:
         """Subscribe to a session's messages as a self-cleaning async iterator.
 
@@ -2909,8 +2888,11 @@ class SessionManager:
         Subscription, replay, queue draining and unsubscribe all live behind this
         seam; cleanup is carried deterministically by ``__aexit__`` (see ADR-0005).
         Consume as ``async with stream_messages(...) as stream: async for msg in stream``.
+
+        ``locale`` only matters when this subscription revives a cold session; an
+        already-resident session ignores it (session-fixed system prompt).
         """
-        queue, replay_msgs = await self._subscribe(session_id, replay=replay)
+        queue, replay_msgs = await self._subscribe(session_id, replay=replay, locale=locale)
 
         async def _iter() -> AsyncIterator[dict[str, Any]]:
             # NOTE: intentionally NO ``finally: _unsubscribe`` here. Cleanup is owned

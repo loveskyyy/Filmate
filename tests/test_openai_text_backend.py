@@ -241,8 +241,149 @@ class TestInstructorFallback:
 
         assert result.text == instructor_result.model_dump_json()
         assert result.provider == PROVIDER_OPENAI
-        assert result.input_tokens == 50
-        assert result.output_tokens == 20
+        # 原生 200 调用（100/60）已被代理计费，与 Instructor 调用（50/20）的 token 合并计入
+        assert result.input_tokens == 150
+        assert result.output_tokens == 80
+        mock_client.chat.completions.create.assert_awaited_once()
+
+    async def test_schema_violating_json_triggers_instructor_fallback_pydantic(self):
+        """原生返回 200 + 合法 JSON 但违反 response_schema（代理接受却不强制 schema），应降级到 Instructor。"""
+        # 代理返回合法 JSON，但 age 是中文字符串、违反 Pydantic int 约束
+        violating_json = json.dumps({"name": "Alice", "age": "三十"}, ensure_ascii=False)
+        instructor_result = _PersonSchema(name="Alice", age=30)
+        instructor_completion = MagicMock()
+        instructor_completion.usage = MagicMock()
+        instructor_completion.usage.prompt_tokens = 80
+        instructor_completion.usage.completion_tokens = 30
+
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=_make_mock_response(violating_json, 100, 60))
+
+        mock_patched = AsyncMock()
+        mock_patched.chat.completions.create_with_completion = AsyncMock(
+            return_value=(instructor_result, instructor_completion)
+        )
+
+        with (
+            patch("lib.openai_shared.AsyncOpenAI", return_value=mock_client),
+            patch("instructor.from_openai", return_value=mock_patched),
+        ):
+            from lib.text_backends.openai import OpenAITextBackend
+
+            backend = OpenAITextBackend(api_key="test-key")
+            request = TextGenerationRequest(
+                prompt="Extract info",
+                response_schema=_PersonSchema,
+            )
+            result = await backend.generate(request)
+
+        # 不再把违例 JSON 直接放行，而是返回经 Instructor 校验后的结果
+        assert result.text == instructor_result.model_dump_json()
+        # 先原生再降级：原生调用恰发生一次，其计费 token（100/60）并入 Instructor 结果（80/30）
+        mock_client.chat.completions.create.assert_awaited_once()
+        assert result.input_tokens == 180
+        assert result.output_tokens == 90
+        mock_patched.chat.completions.create_with_completion.assert_awaited_once()
+
+    async def test_coercible_but_non_strict_json_triggers_instructor_fallback(self):
+        """原生返回可强转但类型不严格匹配的 JSON（age 为数字字符串 "30"），严格校验下视为未强制 schema，应降级。"""
+        # 宽松校验会把 "30" 强转为 30 而放行；strict=True 与原生 response_format 的 strict 对齐，拒绝并降级
+        coercible_json = json.dumps({"name": "Alice", "age": "30"})
+        instructor_result = _PersonSchema(name="Alice", age=30)
+        instructor_completion = MagicMock()
+        instructor_completion.usage = MagicMock()
+        instructor_completion.usage.prompt_tokens = 70
+        instructor_completion.usage.completion_tokens = 25
+
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=_make_mock_response(coercible_json, 100, 60))
+
+        mock_patched = AsyncMock()
+        mock_patched.chat.completions.create_with_completion = AsyncMock(
+            return_value=(instructor_result, instructor_completion)
+        )
+
+        with (
+            patch("lib.openai_shared.AsyncOpenAI", return_value=mock_client),
+            patch("instructor.from_openai", return_value=mock_patched),
+        ):
+            from lib.text_backends.openai import OpenAITextBackend
+
+            backend = OpenAITextBackend(api_key="test-key")
+            request = TextGenerationRequest(
+                prompt="Extract info",
+                response_schema=_PersonSchema,
+            )
+            result = await backend.generate(request)
+
+        assert result.text == instructor_result.model_dump_json()
+        mock_client.chat.completions.create.assert_awaited_once()
+        mock_patched.chat.completions.create_with_completion.assert_awaited_once()
+        # 原生计费 token（100/60）并入 Instructor 结果（70/25）
+        assert result.input_tokens == 170
+        assert result.output_tokens == 85
+
+    async def test_missing_required_field_json_triggers_instructor_fallback(self):
+        """原生返回缺必填字段的合法 JSON（如 age 缺失），应降级到 Instructor 而非直接放行。"""
+        # 缺 age 必填字段
+        violating_json = json.dumps({"name": "Bob"})
+        instructor_result = _PersonSchema(name="Bob", age=25)
+        instructor_completion = MagicMock()
+        instructor_completion.usage = None
+
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=_make_mock_response(violating_json, 90, 40))
+
+        mock_patched = AsyncMock()
+        mock_patched.chat.completions.create_with_completion = AsyncMock(
+            return_value=(instructor_result, instructor_completion)
+        )
+
+        with (
+            patch("lib.openai_shared.AsyncOpenAI", return_value=mock_client),
+            patch("instructor.from_openai", return_value=mock_patched),
+        ):
+            from lib.text_backends.openai import OpenAITextBackend
+
+            backend = OpenAITextBackend(api_key="test-key")
+            request = TextGenerationRequest(
+                prompt="Extract info",
+                response_schema=_PersonSchema,
+            )
+            result = await backend.generate(request)
+
+        # Instructor usage 为 None，结果 token 即原生 200 调用的计费量（90/40）
+        assert result.text == instructor_result.model_dump_json()
+        mock_client.chat.completions.create.assert_awaited_once()
+        assert result.input_tokens == 90
+        assert result.output_tokens == 40
+        mock_patched.chat.completions.create_with_completion.assert_awaited_once()
+
+    async def test_schema_violating_json_with_dict_schema_no_fallback(self):
+        """dict schema 无对应 Pydantic 模型，即便 JSON 违反所声明类型也沿用「仅校验合法 JSON」的既有行为，不降级。"""
+        # 合法 JSON，但 age 是字符串、违反 dict schema 声明的 integer——dict schema 路径不做此校验
+        violating_json = json.dumps({"name": "Alice", "age": "thirty"})
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=_make_mock_response(violating_json))
+
+        with (
+            patch("lib.openai_shared.AsyncOpenAI", return_value=mock_client),
+            patch("lib.text_backends.openai._instructor_fallback") as mock_fallback,
+        ):
+            from lib.text_backends.openai import OpenAITextBackend
+
+            backend = OpenAITextBackend(api_key="test-key")
+            request = TextGenerationRequest(
+                prompt="Extract info",
+                response_schema={
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}, "age": {"type": "integer"}},
+                },
+            )
+            result = await backend.generate(request)
+
+        assert result.text == violating_json
+        mock_fallback.assert_not_called()
 
     async def test_bad_request_error_triggers_instructor_fallback_pydantic(self):
         """原生 response_format 抛 BadRequestError 且 schema 为 Pydantic 类时，走 Instructor 降级。"""

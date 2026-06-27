@@ -32,10 +32,12 @@ skills:
 
 使用 Glob 工具确认中间文件存在，按 `effective_mode` × `content_mode` 三分支检查：
 - effective_mode == reference_video（任一 content_mode）：`drafts/episode_{N}/step1_reference_units.md`（缺失时需先运行 `split-reference-video-units`）
-- effective_mode ∈ {storyboard, grid} 且 content_mode == narration：`drafts/episode_{N}/step1_segments.md`（缺失时需先运行 `split-narration-segments`）
-- effective_mode ∈ {storyboard, grid} 且 content_mode == drama：`drafts/episode_{N}/step1_normalized_script.md`（缺失时需先运行 `normalize-drama-script`）
+- effective_mode ∈ {storyboard, grid} 且 content_mode == narration：`drafts/episode_{N}/step1_segments.json`（缺失时需先运行 `split-narration-segments`）
+- effective_mode ∈ {storyboard, grid} 且 content_mode == drama：`drafts/episode_{N}/step1_normalized_script.json`（结构化内容；缺失时需先运行 `normalize-drama-script`。旧项目残留的 `step1_normalized_script.md` 是结构化前的自由文本稿，不算有效 step1，须重跑 normalize 产出 `.json`）
 
 只认当前组合对应的那一个文件；目录中其他模式的 `step1_*` 文件属历史残留，不能当作代替输入。如果对应中间文件不存在，报告错误并指明需要先运行的预处理 subagent。
+
+> drama 走两段式（见 ADR 0041）：step1 已定稿内容（场景边界 / 出场资产 / 逐字口播 utterances / 原文锚 source_text / 视觉改编描述），`generate_episode_script` 只生成视觉层（image_prompt / video_prompt）并按 scene_id 透传 step1 内容、不重新识别口播。
 
 ### Step 2: 调用工具生成 JSON 剧本
 
@@ -44,6 +46,8 @@ mcp__arcreel__generate_episode_script({"episode": {N}})
 ```
 
 等待返回。返回 `is_error: true` 时查看错误信息并尝试修复或报告问题。
+
+若错误为 **web 审核 gate 阻塞**（drama / narration 的 step1 结构化中间态尚未经显式确认，或确认后内容又被改），这不是数据错误：不要反复重试、不要改写中间文件。确认须由用户驱动——回报主 agent，由其在用户于 Web 端审阅确认、或在对话中明确同意后调用 `mcp__arcreel__confirm_script_review({"episode": N})`，确认后再重试本步骤。
 
 ### Step 3: 验证生成结果
 

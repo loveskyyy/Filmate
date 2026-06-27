@@ -1,11 +1,12 @@
 """Unit tests for assistant router contract changes."""
 
+import inspect
 from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from lib.i18n import get_translator
+from lib.i18n import Translator, get_translator
 from server.auth import CurrentUserInfo, get_current_user, get_current_user_flexible
 from server.routers import assistant
 from tests.conftest import make_translator
@@ -17,13 +18,37 @@ PREFIX = f"/api/v1/projects/{PROJECT}/assistant"
 _FAKE_USER = CurrentUserInfo(id="default", sub="testuser", role="admin")
 
 
+def _override_translator():
+    """Parameterless override returning a fixed-locale translator.
+
+    A bare ``make_translator`` reference would surface its ``locale`` default as
+    an optional query parameter under FastAPI dependency resolution; wrapping it
+    in a zero-arg callable keeps the override contract parameterless.
+    """
+    return make_translator()
+
+
 def _build_client() -> TestClient:
     app = FastAPI()
     app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
     app.dependency_overrides[get_current_user_flexible] = lambda: _FAKE_USER
-    app.dependency_overrides[get_translator] = lambda: make_translator()
+    app.dependency_overrides[get_translator] = _override_translator
     app.include_router(assistant.router, prefix="/api/v1/projects/{project_name}/assistant")
     return TestClient(app)
+
+
+_INTERNAL_ERROR_DETAIL = make_translator()("internal_server_error")
+
+
+def _assert_generic_500(response, sentinel: str) -> None:
+    """兜底 500 契约：响应体 detail 必须是通用 i18n 文案、且不泄露内部哨兵串。
+
+    仅断言 ``sentinel not in text`` 不够——detail 被清空或 i18n key 打错时也不含哨兵串，
+    回归会静默通过；故同时正向锁定 detail 等于翻译后的 internal_server_error 文案。
+    """
+    assert response.status_code == 500
+    assert response.json()["detail"] == _INTERNAL_ERROR_DETAIL
+    assert sentinel not in response.text
 
 
 class TestAssistantRoutes:
@@ -93,6 +118,143 @@ class TestAssistantRoutes:
 
         assert response.status_code == 200
         assert response.json() == interrupt_payload
+
+    def test_send_unexpected_error_no_leak(self):
+        """send 末端 catch-all：未预期异常返回通用 500，不泄露内部细节。"""
+        with patch.object(
+            assistant.assistant_service,
+            "send_or_create",
+            new=AsyncMock(side_effect=RuntimeError("LEAK_send")),
+        ):
+            with _build_client() as client:
+                response = client.post(f"{PREFIX}/sessions/send", json={"content": "hi"})
+
+        _assert_generic_500(response, "LEAK_send")
+
+    def test_list_sessions_unexpected_error_no_leak(self):
+        with patch.object(
+            assistant.assistant_service,
+            "list_sessions",
+            new=AsyncMock(side_effect=RuntimeError("LEAK_list")),
+        ):
+            with _build_client() as client:
+                response = client.get(f"{PREFIX}/sessions")
+
+        _assert_generic_500(response, "LEAK_list")
+
+    def test_get_session_unexpected_error_no_leak(self):
+        with patch.object(
+            assistant.assistant_service,
+            "get_session",
+            new=AsyncMock(side_effect=RuntimeError("LEAK_get")),
+        ):
+            with _build_client() as client:
+                response = client.get(f"{PREFIX}/sessions/session-1")
+
+        _assert_generic_500(response, "LEAK_get")
+
+    def test_delete_session_unexpected_error_no_leak(self):
+        session_meta = make_session_meta(id="session-1", project_name=PROJECT)
+        with (
+            patch.object(assistant.assistant_service, "get_session", return_value=session_meta),
+            patch.object(
+                assistant.assistant_service,
+                "delete_session",
+                new=AsyncMock(side_effect=RuntimeError("LEAK_delete")),
+            ),
+        ):
+            with _build_client() as client:
+                response = client.delete(f"{PREFIX}/sessions/session-1")
+
+        _assert_generic_500(response, "LEAK_delete")
+
+    def test_snapshot_unexpected_error_no_leak(self):
+        session_meta = make_session_meta(id="session-1", project_name=PROJECT)
+        with (
+            patch.object(assistant.assistant_service, "get_session", return_value=session_meta),
+            patch.object(
+                assistant.assistant_service,
+                "get_snapshot",
+                new=AsyncMock(side_effect=RuntimeError("LEAK_snapshot")),
+            ),
+        ):
+            with _build_client() as client:
+                response = client.get(f"{PREFIX}/sessions/session-1/snapshot")
+
+        _assert_generic_500(response, "LEAK_snapshot")
+
+    def test_interrupt_unexpected_error_no_leak(self):
+        session_meta = make_session_meta(id="session-1", project_name=PROJECT)
+        with (
+            patch.object(assistant.assistant_service, "get_session", return_value=session_meta),
+            patch.object(
+                assistant.assistant_service,
+                "interrupt_session",
+                new=AsyncMock(side_effect=RuntimeError("LEAK_interrupt")),
+            ),
+        ):
+            with _build_client() as client:
+                response = client.post(f"{PREFIX}/sessions/session-1/interrupt")
+
+        _assert_generic_500(response, "LEAK_interrupt")
+
+    def test_answer_question_unexpected_error_no_leak(self):
+        session_meta = make_session_meta(id="session-1", project_name=PROJECT)
+        with (
+            patch.object(assistant.assistant_service, "get_session", return_value=session_meta),
+            patch.object(
+                assistant.assistant_service,
+                "answer_user_question",
+                new=AsyncMock(side_effect=RuntimeError("LEAK_answer")),
+            ),
+        ):
+            with _build_client() as client:
+                response = client.post(
+                    f"{PREFIX}/sessions/session-1/questions/q-1/answer",
+                    json={"answers": {"q-1": "yes"}},
+                )
+
+        _assert_generic_500(response, "LEAK_answer")
+
+    def test_stream_injects_translator_and_no_leak(self):
+        # SSE 端点在开始流式后已提交 200，末端 catch-all 的 HTTPException 无法把 detail 写回
+        # 已提交的响应体（body 恒为空）——故响应体断言对该端点天然 vacuous，无法区分修复与回归。
+        # 真正可锁定的契约是 catch-all 走 i18n 而非 str(exc)，这依赖 `_t: Translator` 被注入签名；
+        # 用 inspect 正向核验注入，再以 raise_server_exceptions=False 跑一遍确认哨兵串不泄露。
+        params = inspect.signature(assistant.stream_events).parameters
+        assert params["_t"].annotation is Translator
+
+        session_meta = make_session_meta(id="session-1", project_name=PROJECT)
+
+        async def _boom(*args, **kwargs):
+            raise RuntimeError("LEAK_stream")
+            yield  # pragma: no cover - 标记为异步生成器
+
+        app = FastAPI()
+        app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
+        app.dependency_overrides[get_current_user_flexible] = lambda: _FAKE_USER
+        app.dependency_overrides[get_translator] = _override_translator
+        app.include_router(assistant.router, prefix="/api/v1/projects/{project_name}/assistant")
+
+        with (
+            patch.object(assistant.assistant_service, "get_session", return_value=session_meta),
+            patch.object(assistant.assistant_service, "stream_events", new=_boom),
+        ):
+            with TestClient(app, raise_server_exceptions=False) as client:
+                response = client.get(f"{PREFIX}/sessions/session-1/stream")
+
+        assert "LEAK_stream" not in response.text
+
+    def test_list_skills_unexpected_error_no_leak(self):
+        with patch.object(
+            assistant.assistant_service,
+            "list_available_skills",
+            side_effect=RuntimeError("LEAK_skills"),
+        ):
+            with _build_client() as client:
+                response = client.get(f"{PREFIX}/skills")
+
+        _assert_generic_500(response, "LEAK_skills")
 
     def test_send_endpoint_translates_agent_startup_error_to_502(self):
         """``AgentStartupError`` 必须翻译成 502 + i18n 包装的 detail，

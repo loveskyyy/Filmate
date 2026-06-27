@@ -9,6 +9,11 @@ from fastapi.testclient import TestClient
 
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import characters
+from tests.conftest import make_translator
+
+# 兜底 500 的默认 locale 文案：测试未覆盖 get_translator，端点回落到 DEFAULT_LOCALE("zh")，
+# 与 make_translator() 默认 locale 一致。
+_INTERNAL_ERROR_DETAIL = make_translator()("internal_server_error")
 
 
 class _FakePM:
@@ -139,3 +144,57 @@ class TestAssetRouterFactory:
             assert "unknown" in str(e)
         else:
             raise AssertionError("should have raised ValueError")
+
+
+class TestAssetRouterNoLeak:
+    """末端 catch-all：未预期异常返回通用 500，内部异常细节不泄露给客户端。
+
+    把 add/update/delete 各自 try 块里最早调用的 pm_getter（get_project_manager）
+    monkeypatch 成抛带哨兵串的 RuntimeError，绕过前置的 FileNotFoundError/HTTPException
+    分支落到末端 except Exception，断言 500、detail 为通用 i18n 文案且哨兵串不出现在响应体。
+    """
+
+    def test_add_unexpected_error_no_leak(self, monkeypatch):
+        monkeypatch.setattr(
+            characters,
+            "get_project_manager",
+            lambda: (_ for _ in ()).throw(RuntimeError("LEAK_add")),
+        )
+        app = FastAPI()
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.include_router(characters.router, prefix="/api/v1")
+        with TestClient(app) as client:
+            resp = client.post("/api/v1/projects/demo/characters", json={"name": "Bob", "description": "x"})
+            assert resp.status_code == 500
+            assert resp.json()["detail"] == _INTERNAL_ERROR_DETAIL
+            assert "LEAK_add" not in resp.text
+
+    def test_update_unexpected_error_no_leak(self, monkeypatch):
+        monkeypatch.setattr(
+            characters,
+            "get_project_manager",
+            lambda: (_ for _ in ()).throw(RuntimeError("LEAK_update")),
+        )
+        app = FastAPI()
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.include_router(characters.router, prefix="/api/v1")
+        with TestClient(app) as client:
+            resp = client.patch("/api/v1/projects/demo/characters/Alice", json={"description": "new"})
+            assert resp.status_code == 500
+            assert resp.json()["detail"] == _INTERNAL_ERROR_DETAIL
+            assert "LEAK_update" not in resp.text
+
+    def test_delete_unexpected_error_no_leak(self, monkeypatch):
+        monkeypatch.setattr(
+            characters,
+            "get_project_manager",
+            lambda: (_ for _ in ()).throw(RuntimeError("LEAK_delete")),
+        )
+        app = FastAPI()
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.include_router(characters.router, prefix="/api/v1")
+        with TestClient(app) as client:
+            resp = client.delete("/api/v1/projects/demo/characters/Alice")
+            assert resp.status_code == 500
+            assert resp.json()["detail"] == _INTERNAL_ERROR_DETAIL
+            assert "LEAK_delete" not in resp.text

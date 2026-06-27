@@ -446,6 +446,37 @@ describe("API", () => {
         }),
       });
     });
+
+    it("covers step1→step2 script-review gate endpoints", async () => {
+      const requestSpy = vi.spyOn(API, "request").mockResolvedValue({ status: "pending_review" } as never);
+
+      const content = {
+        segments: [
+          {
+            segment_id: "E1S01",
+            novel_text: "原文",
+            duration_seconds: 6,
+            segment_break: false,
+            characters_in_segment: [],
+            scenes: [],
+            props: [],
+          },
+        ],
+      };
+      // 三个封装都用含空格项目名，断言 encodeURIComponent 在各自路径上生效（编码丢失即失败）。
+      await API.getScriptReview("a b", 1);
+      await API.saveScriptReviewContent("a b", 2, content);
+      await API.confirmScriptReview("a b", 3);
+
+      expect(requestSpy).toHaveBeenCalledWith("/projects/a%20b/episodes/1/script-review");
+      expect(requestSpy).toHaveBeenCalledWith("/projects/a%20b/episodes/2/script-review/content", {
+        method: "PUT",
+        body: JSON.stringify(content),
+      });
+      expect(requestSpy).toHaveBeenCalledWith("/projects/a%20b/episodes/3/script-review/confirm", {
+        method: "POST",
+      });
+    });
   });
 
   describe("fetch-based wrappers", () => {
