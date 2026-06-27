@@ -76,9 +76,16 @@ def _build_simple(config: LoadedConfig, model_id: str | None, *, media_type: str
 
     kwargs: dict[str, Any] = {"model": model_id}
     api_key = config.credentials.get("api_key")
+    logger.info("_build_simple: credentials=%s", config.credentials)
     if api_key:
         kwargs["api_key"] = api_key
-        logger.info("_build_simple filmate: api_key=%s, model=%s, media=%s", api_key[:8] + "...", model_id, media_type)
+        logger.info(
+            "_build_simple filmate: api_key=%s (len=%d), model=%s, media=%s",
+            api_key[:8] + "...",
+            len(api_key),
+            model_id,
+            media_type,
+        )
     else:
         logger.warning("_build_simple filmate: api_key is EMPTY or None! credentials=%s", config.credentials)
     base_url = _resolve_base_url(config)
