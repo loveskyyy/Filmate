@@ -196,3 +196,5 @@ class FilmateImageBackend(ImageBackend):
         # 保存到文件
         with open(output_path, "wb") as f:
             f.write(content)
+
+        logger.info("Filmate 图片已保存到: %s", output_path)
