@@ -117,7 +117,7 @@ class FilmateImageBackend(ImageBackend):
 
         logger.info("===== 发送请求 =====")
         logger.info("URL: %s", submit_url)
-        logger.info("Headers: %s", dict(headers))
+        logger.info("Authorization原始值: %s", headers["Authorization"])
         logger.info("Body: %s", _json.dumps(payload, ensure_ascii=False))
         logger.info("===== 发送请求结束 =====")
         response = await self._client.post(submit_url, json=payload, headers=headers)
