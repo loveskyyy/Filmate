@@ -49,7 +49,9 @@ class FilmateImageBackend(ImageBackend):
         self._api_key = api_key or ""
         self._base_url = base_url or DEFAULT_BASE_URL
         self._model = model or DEFAULT_MODEL
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=30.0), follow_redirects=True)
+        self._client = httpx.AsyncClient(
+            timeout=httpx.Timeout(120.0, connect=30.0), follow_redirects=True, trust_env=False
+        )
         self._capabilities: set[ImageCapability] = {
             ImageCapability.TEXT_TO_IMAGE,
             ImageCapability.IMAGE_TO_IMAGE,
@@ -120,6 +122,16 @@ class FilmateImageBackend(ImageBackend):
         logger.info("Authorization原始值: %s", headers["Authorization"])
         logger.info("Body: %s", _json.dumps(payload, ensure_ascii=False))
         logger.info("===== 发送请求结束 =====")
+        # 打印实际发送的完整请求
+        import sys
+
+        sys.stdout.write("\n===== DEBUG: 发送请求 =====\n")
+        sys.stdout.write(f"URL: {submit_url}\n")
+        sys.stdout.write(f"Authorization: {headers['Authorization']}\n")
+        sys.stdout.write(f"Body: {payload}\n")
+        sys.stdout.write("===== DEBUG END =====\n")
+        sys.stdout.flush()
+
         response = await self._client.post(submit_url, json=payload, headers=headers)
         response.raise_for_status()
 
