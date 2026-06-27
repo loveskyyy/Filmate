@@ -127,8 +127,8 @@ class FilmateImageBackend(ImageBackend):
         output_path = await self._download_image(image_url)
 
         return ImageGenerationResult(
-            url=image_url,
-            output_path=output_path,
+            image_path=output_path,
+            image_uri=image_url,
             provider=self.name,
             model=self.model,
         )
