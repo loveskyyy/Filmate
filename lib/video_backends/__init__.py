@@ -93,3 +93,8 @@ from lib.providers import PROVIDER_RUNNINGHUB  # noqa: E402
 from lib.video_backends.runningHub import RunningHubVideoBackend  # noqa: E402
 
 register_backend(PROVIDER_RUNNINGHUB, RunningHubVideoBackend)
+
+from lib.providers import PROVIDER_AGNES  # noqa: E402
+from lib.video_backends.agnes import AgnesVideoBackend  # noqa: E402
+
+register_backend(PROVIDER_AGNES, AgnesVideoBackend)

@@ -5,7 +5,8 @@ dataclass，挂一个 build 闭包；闭包读 LoadedConfig 信封 + model_id �
 登记简单族（媒体侧只需 api_key + model + base_url 的内置 provider）的 image/video/audio，
 共享一个 _build_simple 闭包；外加 gemini（backend_type 双模式，image/video 对等透传 base_url）与
 kling（JWT 双 secret + api_model_name 解耦）两个特例族，各自挂专属 build 闭包。文本（media_type=text）
-四条 media_type 同经本表：简单文本（ark/ark-agent-plan/grok）、gemini 文本（aistudio/vertex）、
+四条 media_type 同经本表：简单文本（ark/ark-agent-plan/grok/agnes，agnes 走 OpenAI 兼容
+chat/completions 但鉴权 / base_url 收口在专属 AgnesTextBackend，故归简单族而非 OpenAI-compat 别名）、gemini 文本（aistudio/vertex）、
 OpenAI-compat 文本（openai/dashscope/minimax，dashscope/minimax 经 helper 派生 base_url + 透传
 provider_name 计费归因）各挂专属闭包；文本侧别名映射（dashscope/minimax → openai registry backend）
 并入 spec 的 registry_backend 字段，根除原文本工厂第二份 PROVIDER_ID_TO_BACKEND。表在 import 期校验
@@ -174,8 +175,9 @@ def _kling_spec(media_type: str) -> ProviderSpec:
 # 文本 backend 注册在独立的 lib.text_backends.registry（非 media registry），构造形态与媒体有别：
 # api_key/base_url 透传规则、OpenAI-compat 别名映射、provider_name 计费归因透传各不相同，故文本侧
 # 不复用 _build_simple，各类形态挂专属闭包。三类：
-#   ① 简单文本（ark / ark-agent-plan / grok）—— model + api_key（无条件透传）+ base_url（user >
-#      registry default，仅非空才传，对称媒体简单族 base_url 优先级）。
+#   ① 简单文本（ark / ark-agent-plan / grok / agnes）—— model + api_key（无条件透传）+ base_url（user >
+#      registry default，仅非空才传，对称媒体简单族 base_url 优先级）。agnes 虽走 OpenAI 兼容
+#      chat/completions，但鉴权 / base_url 归一化收口在专属 AgnesTextBackend，故归此族而非 ③。
 #   ② gemini 文本 —— aistudio（model + api_key + base_url 无条件透传，含 None/空串）/ vertex
 #      （model + backend=vertex + gcs_bucket）按 provider_id 分两行，不在闭包内 if。
 #   ③ OpenAI-compat（openai / dashscope / minimax）—— 都映射到 "openai" registry backend；openai 直传
@@ -330,12 +332,18 @@ PROVIDER_SPEC_REGISTRY.update(
 PROVIDER_SPEC_REGISTRY.update(
     {(_KLING_REGISTRY_BACKEND, media_type): _kling_spec(media_type) for media_type in ("image", "video")}
 )
+# agnes 简单族 image + video 显式登记（文本族在下方文本区随 _TEXT_SIMPLE_PROVIDERS 登记）；
+# 与 kling 同走独立显式登记，不并入 _SIMPLE_IMAGE_VIDEO_PROVIDERS 元组。
+PROVIDER_SPEC_REGISTRY[("agnes", "image")] = _simple_spec("agnes", "image")
+PROVIDER_SPEC_REGISTRY[("agnes", "video")] = _simple_spec("agnes", "video")
 
 # ── 文本族注册 ────────────────────────────────────────────────────
-# 简单文本三家（registry_backend = provider_id 自身）；gemini 两个 provider_id 按 backend 分两行
+# 简单文本四家（registry_backend = provider_id 自身）；gemini 两个 provider_id 按 backend 分两行
 # （aistudio/vertex 各自闭包，registry_backend 同为 "gemini"）；OpenAI-compat 三家都映射到 "openai"
 # registry backend，openai 直传用户 base_url，dashscope/minimax 经 helper 派生 + 透传 provider_name 计费归因。
-_TEXT_SIMPLE_PROVIDERS = ("ark", "ark-agent-plan", "grok", "filmate")
+# agnes 虽走 OpenAI 兼容 chat/completions，但鉴权 / base_url 归一化收口在专属 AgnesTextBackend（复用
+# agnes_shared），故归简单文本族（registry_backend = "agnes"），不并入 OpenAI-compat 别名映射。
+_TEXT_SIMPLE_PROVIDERS = ("ark", "ark-agent-plan", "grok", "agnes", "filmate")
 PROVIDER_SPEC_REGISTRY.update({(p, "text"): _text_simple_spec(p) for p in _TEXT_SIMPLE_PROVIDERS})
 PROVIDER_SPEC_REGISTRY.update(
     {

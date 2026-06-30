@@ -71,3 +71,8 @@ from lib.image_backends.filmate import FilmateImageBackend
 from lib.providers import PROVIDER_FILMATE
 
 register_backend(PROVIDER_FILMATE, FilmateImageBackend)
+
+from lib.image_backends.agnes import AgnesImageBackend
+from lib.providers import PROVIDER_AGNES
+
+register_backend(PROVIDER_AGNES, AgnesImageBackend)

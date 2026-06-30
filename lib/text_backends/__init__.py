@@ -48,3 +48,8 @@ from lib.providers import PROVIDER_FILMATE
 from lib.text_backends.filmate import FilmateTextBackend
 
 register_backend(PROVIDER_FILMATE, FilmateTextBackend)
+
+from lib.providers import PROVIDER_AGNES
+from lib.text_backends.agnes import AgnesTextBackend
+
+register_backend(PROVIDER_AGNES, AgnesTextBackend)
