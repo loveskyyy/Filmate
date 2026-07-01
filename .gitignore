@@ -68,6 +68,10 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 
+admin/node_modules/
+admin/dist/
+admin/.vite/
+
 # Git backup
 .git.backup
 

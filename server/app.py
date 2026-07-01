@@ -64,6 +64,7 @@ from server.routers import (
     system_config,
     tasks,
     usage,
+    users,
     versions,
 )
 from server.routers import auth as auth_router
@@ -563,6 +564,7 @@ app.include_router(cost_estimation.router, prefix="/api/v1", tags=["费用估算
 app.include_router(grids.router, prefix="/api/v1", tags=["宫格图"])
 app.include_router(reference_videos.router, prefix="/api/v1", tags=["参考生视频"])
 app.include_router(assets.router, prefix="/api/v1", tags=["全局资产库"])
+app.include_router(users.router, prefix="/api/v1", tags=["用户管理"])
 
 
 def create_generation_worker() -> GenerationWorker:
