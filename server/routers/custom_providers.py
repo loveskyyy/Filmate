@@ -680,20 +680,29 @@ async def _run_discover(
     """共用的模型发现逻辑（明文凭证 / 已存储凭证两条入口共用）。"""
     from lib.custom_provider.discovery import discover_models
 
+    logger.info(
+        "模型发现请求: format=%s, base_url=%s, api_key_present=%s",
+        discovery_format,
+        base_url[:30] + "..." if base_url and len(base_url) > 30 else base_url,
+        bool(api_key),
+    )
+
     try:
         models = await discover_models(
             discovery_format=discovery_format,
-            base_url=base_url or None,
+            base_url=base_url,
             api_key=api_key,
         )
+        logger.info("模型发现成功: 数量=%d", len(models))
         return DiscoverResponse(models=models)
     except ValueError as exc:
+        logger.error("模型发现 ValueError: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         err_msg = str(exc)
+        logger.error("模型发现 Exception: type=%s, msg=%s", type(exc).__name__, err_msg)
         if len(err_msg) > 200:
             err_msg = err_msg[:200] + "..."
-        logger.warning("模型发现失败: %s", err_msg)
         raise HTTPException(status_code=502, detail=_t("discovery_failed", err_msg=err_msg))
 
 

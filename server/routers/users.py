@@ -1,21 +1,27 @@
 """用户管理 API"""
 
-import hashlib
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from lib.db import async_session_factory
+from lib.db import async_engine
 from lib.db.models.user import User
-from server.auth import check_credentials, create_token
+from server.auth import _password_hash, create_token
 
 router = APIRouter()
 
+# 创建 session 依赖
+_async_session_factory = async_sessionmaker(async_engine, expire_on_commit=False)
+
+
+async def get_session() -> AsyncSession:
+    async with _async_session_factory() as session:
+        yield session
+
 
 def make_hash(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+    return _password_hash.hash(password)
 
 
 class UserResponse(BaseModel):
@@ -34,6 +40,7 @@ class UserCreate(BaseModel):
     email: str | None = None
     password: str
     role: str = "user"
+    credits: int = 0
 
 
 class UserUpdate(BaseModel):
@@ -50,9 +57,24 @@ class LoginRequest(BaseModel):
     password: str
 
 
-async def get_session() -> AsyncSession:
-    async with async_session_factory() as session:
-        yield session
+# 重要：/users/login 必须在 /users/{user_id} 之前定义
+@router.post("/users/login")
+async def login(data: LoginRequest, session: AsyncSession = Depends(get_session)):
+    """用户登录"""
+    result = await session.execute(select(User).where(User.username == data.username))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+
+    if not _password_hash.verify(data.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="只有管理员才能登录后台")
+
+    token = create_token(data.username)
+    return {"access_token": token, "token_type": "bearer"}
 
 
 @router.get("/users", response_model=list[UserResponse])
@@ -97,19 +119,17 @@ async def get_user(user_id: int, session: AsyncSession = Depends(get_session)):
 @router.post("/users", response_model=UserResponse)
 async def create_user(data: UserCreate, session: AsyncSession = Depends(get_session)):
     """创建用户"""
-    # 检查用户名是否已存在
     result = await session.execute(select(User).where(User.username == data.username))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="用户名已存在")
 
-    # 检查邮箱是否已存在
     if data.email:
         result = await session.execute(select(User).where(User.email == data.email))
-        if result.scalar_one_or_none():
+        if result.first():
             raise HTTPException(status_code=400, detail="邮箱已被使用")
 
     hashed = make_hash(data.password)
-    user = User(username=data.username, email=data.email, hashed_password=hashed, role=data.role)
+    user = User(username=data.username, email=data.email, hashed_password=hashed, role=data.role, credits=data.credits)
     session.add(user)
     await session.commit()
     await session.refresh(user)
@@ -135,15 +155,14 @@ async def update_user(user_id: int, data: UserUpdate, session: AsyncSession = De
         raise HTTPException(status_code=404, detail="用户不存在")
 
     if data.username is not None and data.username != user.username:
-        # 检查新用户名是否已存在
         result = await session.execute(select(User).where(User.username == data.username))
         if result.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="用户名已存在")
         user.username = data.username
 
-    if data.email is not None:
+    if data.email is not None and data.email != "":
         result = await session.execute(select(User).where(User.email == data.email, User.id != user_id))
-        if result.scalar_one_or_none():
+        if result.first():
             raise HTTPException(status_code=400, detail="邮箱已被使用")
         user.email = data.email
 
@@ -187,10 +206,35 @@ async def delete_user(user_id: int, session: AsyncSession = Depends(get_session)
     return {"deleted": user_id}
 
 
-@router.post("/users/login")
-async def login(data: LoginRequest):
-    """用户登录"""
-    if not check_credentials(data.username, data.password):
-        raise HTTPException(status_code=401, detail="用户名或密码错误")
-    token = create_token(data.username)
-    return {"access_token": token, "token_type": "bearer"}
+class CreditsAdjustRequest(BaseModel):
+    amount: int
+    reason: str | None = None
+
+
+@router.post("/users/{user_id}/credits", response_model=UserResponse)
+async def adjust_user_credits(user_id: int, data: CreditsAdjustRequest, session: AsyncSession = Depends(get_session)):
+    """调整用户积分"""
+    result = await session.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    new_credits = user.credits + data.amount
+    if new_credits < 0:
+        raise HTTPException(status_code=400, detail="积分不足，无法减少")
+
+    user.credits = new_credits
+    await session.commit()
+    await session.refresh(user)
+
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        role=user.role,
+        is_active=user.is_active,
+        credits=user.credits,
+        created_at=user.created_at.isoformat() if user.created_at else None,
+        updated_at=user.updated_at.isoformat() if user.updated_at else None,
+    )

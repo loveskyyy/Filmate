@@ -64,6 +64,7 @@ from server.routers import (
     system_config,
     tasks,
     usage,
+    user_agent_config,
     users,
     versions,
 )
@@ -559,6 +560,7 @@ app.include_router(system.router, prefix="/api/v1", tags=["系统"])
 app.include_router(api_keys.router, prefix="/api/v1", tags=["API Key 管理"])
 app.include_router(agent_chat.router, prefix="/api/v1", tags=["Agent 对话"])
 app.include_router(agent_config.router, prefix="/api/v1", tags=["Agent 配置"])
+app.include_router(user_agent_config.router, prefix="/api/v1", tags=["用户智能体配置"])
 app.include_router(custom_providers.router, prefix="/api/v1", tags=["自定义供应商"])
 app.include_router(cost_estimation.router, prefix="/api/v1", tags=["费用估算"])
 app.include_router(grids.router, prefix="/api/v1", tags=["宫格图"])

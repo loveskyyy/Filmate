@@ -3,6 +3,7 @@ import UsersPage from "./components/pages/UsersPage";
 import ConfigPage from "./components/pages/ConfigPage";
 import StatsPage from "./components/pages/StatsPage";
 import LoginPage from "./components/pages/LoginPage";
+import UserAgentConfigPage from "./components/pages/UserAgentConfigPage";
 import Layout from "./components/Layout";
 import { getToken } from "./api";
 
@@ -28,6 +29,7 @@ export default function App() {
       >
         <Route index element={<Navigate to="/users" replace />} />
         <Route path="users" element={<UsersPage />} />
+        <Route path="users/:userId/agent-config" element={<UserAgentConfigPage />} />
         <Route path="config" element={<ConfigPage />} />
         <Route path="stats" element={<StatsPage />} />
       </Route>

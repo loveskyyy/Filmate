@@ -1,15 +1,22 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Coins, Settings } from "lucide-react";
 import { User, usersApi } from "../../api";
 
 export default function UsersPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form, setForm] = useState({ username: "", password: "", email: "", role: "user", credits: 0 });
+  
+  // 积分调整
+  const [showCreditsModal, setShowCreditsModal] = useState(false);
+  const [creditsUser, setCreditsUser] = useState<User | null>(null);
+  const [creditsAmount, setCreditsAmount] = useState(0);
 
   useEffect(() => {
     loadUsers();
@@ -64,6 +71,40 @@ export default function UsersPage() {
     setForm({ username: "", password: "", email: "", role: "user", credits: 0 });
     setShowModal(true);
   };
+  
+  // 积分调整
+  const openCreditsModal = (user: User) => {
+    setCreditsUser(user);
+    setCreditsAmount(0);
+    setShowCreditsModal(true);
+  };
+  
+  // 打开用户智能体配置
+  const openAgentConfig = (user: User) => {
+    navigate(`/users/${user.id}/agent-config`);
+  };
+  
+  const handleCreditsAdjust = async () => {
+    if (!creditsUser || creditsAmount === 0) return;
+    try {
+      await fetch(`/api/v1/users/${creditsUser.id}/credits`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: creditsAmount }),
+      }).then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.detail || "调整失败");
+        }
+        return res.json();
+      });
+      setShowCreditsModal(false);
+      setCreditsUser(null);
+      loadUsers();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
 
   return (
     <div>
@@ -103,6 +144,12 @@ export default function UsersPage() {
                   </td>
                   <td className="px-6 py-4">{user.credits}</td>
                   <td className="px-6 py-4">
+                    <button onClick={() => openAgentConfig(user)} className="text-purple-600 hover:text-purple-800 mr-3" title={t("agentConfig")}>
+                      <Settings className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => openCreditsModal(user)} className="text-yellow-600 hover:text-yellow-800 mr-3" title={t("adjustCredits")}>
+                      <Coins className="w-4 h-4" />
+                    </button>
                     <button onClick={() => openEdit(user)} className="text-blue-600 hover:text-blue-800 mr-3">
                       <Pencil className="w-4 h-4" />
                     </button>
@@ -177,6 +224,41 @@ export default function UsersPage() {
                 {t("save")}
               </button>
               <button onClick={() => setShowModal(false)} className="flex-1 border py-2 rounded-lg hover:bg-gray-50">
+                {t("cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 积分调整弹窗 */}
+      {showCreditsModal && creditsUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 w-80">
+            <h3 className="text-lg font-bold mb-4">{t("adjustCredits")}</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              {creditsUser.username} - {t("currentCredits")}: {creditsUser.credits}
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">{t("adjustAmount")}</label>
+                <input
+                  type="number"
+                  value={creditsAmount}
+                  onChange={(e) => setCreditsAmount(Number(e.target.value))}
+                  className="w-full border rounded px-3 py-2"
+                  placeholder="正数增加，负数减少"
+                />
+              </div>
+              <p className="text-sm text-gray-500">
+                {t("newCredits")}: {creditsUser.credits + creditsAmount}
+              </p>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={handleCreditsAdjust} className="flex-1 bg-yellow-500 text-white py-2 rounded-lg hover:bg-yellow-600">
+                {t("confirm")}
+              </button>
+              <button onClick={() => setShowCreditsModal(false)} className="flex-1 border py-2 rounded-lg hover:bg-gray-50">
                 {t("cancel")}
               </button>
             </div>

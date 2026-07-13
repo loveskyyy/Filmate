@@ -122,23 +122,22 @@ class FilmateVideoBackend(VideoBackend):
             "prompt": request.prompt,
         }
 
-        # 处理尺寸参数
-        if request.aspect_ratio:
-            payload["size"] = request.aspect_ratio
+        # 注意：Filmate API 只支持 resolution+seconds 组合，不支持 size
+        # 错误信息显示支持的组合如 {resolution=720P, seconds=4}
 
-        # 处理时长
+        # 处理时长 - 必须在 resolution 之前处理，因为 API 验证组合
         if request.duration_seconds:
             payload["seconds"] = request.duration_seconds
 
-        # 处理分辨率
-        if request.resolution:
-            # 转换分辨率为 API 格式（如 720P）
-            resolution_map = {
-                "480p": "480P",
-                "720p": "720P",
-                "1080p": "1080P",
-            }
-            payload["resolution"] = resolution_map.get(request.resolution.lower(), request.resolution)
+        # 处理分辨率 - Filmate API 只认这个参数
+        # 默认使用 720P（API 只支持 720P）
+        resolution = request.resolution or "720P"
+        resolution_map = {
+            "480p": "480P",
+            "720p": "720P",
+            "1080p": "1080P",
+        }
+        payload["resolution"] = resolution_map.get(resolution.lower(), "720P")
 
         # 处理种子
         if request.seed is not None:

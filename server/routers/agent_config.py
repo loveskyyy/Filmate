@@ -18,7 +18,7 @@ from lib.config.anthropic_probe import ProbeResult as ProbeResultDC
 from lib.config.anthropic_probe import TestConnectionResponse as TestConnectionResponseDC
 from lib.config.repository import mask_secret
 from lib.db import get_async_session
-from lib.db.base import dt_to_iso
+from lib.db.base import DEFAULT_USER_ID, dt_to_iso
 from lib.db.repositories.agent_credential_repo import AgentCredentialRepository
 from lib.i18n import Translator
 from server.auth import CurrentUser
@@ -152,9 +152,12 @@ async def list_credentials(
     _user: CurrentUser,
     _t: Translator,
     session: AsyncSession = Depends(get_async_session),
+    for_user_id: str | None = None,
 ) -> CredentialListResponse:
     repo = AgentCredentialRepository(session)
-    creds = await repo.list_for_user()
+    # 如果指定了 for_user_id 且非 "default"，使用它；否则使用 DEFAULT_USER_ID
+    target_user_id = for_user_id if for_user_id and for_user_id != "default" else DEFAULT_USER_ID
+    creds = await repo.list_for_user(target_user_id)
     return CredentialListResponse(credentials=[_cred_to_response(c) for c in creds])
 
 
@@ -164,6 +167,7 @@ async def create_credential(
     _user: CurrentUser,
     _t: Translator,
     session: AsyncSession = Depends(get_async_session),
+    for_user_id: str | None = None,
 ) -> CredentialResponse:
     if body.preset_id != CUSTOM_SENTINEL_ID:
         preset = get_preset(body.preset_id)
@@ -179,6 +183,9 @@ async def create_credential(
         display_name = body.display_name or "Custom"
         model = body.model
 
+    # 确定目标用户：如果指定了 for_user_id 且非 "default"，使用它；否则使用 DEFAULT_USER_ID
+    target_user_id = for_user_id if for_user_id and for_user_id != "default" else DEFAULT_USER_ID
+
     repo = AgentCredentialRepository(session)
     cred = await repo.create(
         preset_id=body.preset_id,
@@ -190,15 +197,16 @@ async def create_credential(
         sonnet_model=body.sonnet_model,
         opus_model=body.opus_model,
         subagent_model=body.subagent_model,
+        user_id=target_user_id,
     )
     # 自动 active 策略：activate=True，或 (activate=None 且当前无 active)
     should_activate = body.activate is True
     if body.activate is None:
-        existing_active = await repo.get_active()
+        existing_active = await repo.get_active(target_user_id)
         if existing_active is None:
             should_activate = True
     if should_activate:
-        await repo.set_active(cred.id)
+        await repo.set_active(cred.id, target_user_id)
     await session.commit()
     await session.refresh(cred)
     return _cred_to_response(cred)

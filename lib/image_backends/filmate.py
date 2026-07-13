@@ -16,7 +16,6 @@ from lib.image_backends.base import (
     ImageGenerationRequest,
     ImageGenerationResult,
 )
-from lib.logging_utils import format_kwargs_for_log
 from lib.retry import with_retry_async
 
 logger = logging.getLogger(__name__)
@@ -81,14 +80,14 @@ class FilmateImageBackend(ImageBackend):
         }
 
         # 构建请求体
+        prompt = request.prompt
+        logger.info("Filmate generate: self=%s, prompt=%s", vars(self), repr(prompt)[:100])
+        if not prompt:
+            raise RuntimeError("prompt 不能为空")
         payload: dict = {
             "model": self._model,
-            "prompt": request.prompt,
+            "prompt": prompt,
         }
-
-        # 处理尺寸参数
-        aspect_ratio = request.aspect_ratio or "1:1"
-        payload["size"] = aspect_ratio
 
         # 处理参考图 (I2I)
         if has_refs:
@@ -98,13 +97,17 @@ class FilmateImageBackend(ImageBackend):
             else:
                 payload["images"] = ref_urls
 
-        logger.info(
-            "提交 Filmate 图片生成任务 kwargs=%s",
-            format_kwargs_for_log({"model": payload.get("model"), "prompt_len": len(payload.get("prompt", ""))}),
-        )
-
         # 提交任务
         submit_url = f"{self._base_url}/images/generations"
+        logger.info(
+            "Filmate 提交图片请求: URL=%s, model=%s, model_id=%s, prompt=%s, size=%s, has_refs=%s",
+            submit_url,
+            self._model,
+            self._model,
+            prompt[:100] if prompt else "",
+            payload.get("size"),
+            has_refs,
+        )
         response = await self._client.post(submit_url, json=payload, headers=headers)
         response.raise_for_status()
 
