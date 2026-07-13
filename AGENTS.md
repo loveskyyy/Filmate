@@ -227,11 +227,11 @@ API Key、后端选择、模型配置等通过 WebUI 配置页（`/settings`）�
 
 ### Issue tracker
 
-议题（issue/PRD）追踪在 `ArcReel/ArcReel` 的 GitHub Issues，统一用 `gh` CLI 操作。PRD 用 `PRD` 标签 + `PRD:` 标题前缀；细分 issue 标题尾缀 `[PRD #N]` 并挂原生 sub-issue。详见 `docs/agents/issue-tracker.md`。
+议题（issue/Spec）追踪在 `ArcReel/ArcReel` 的 GitHub Issues，统一用 `gh` CLI 操作。Spec 用 `Spec` 标签 + `Spec:` 标题前缀；细分 issue 标题尾缀 `[Spec #N]` 并挂原生 sub-issue。详见 `docs/agents/issue-tracker.md`。
 
 ### Triage labels
 
-triage 状态机使用五个默认标签：`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`。详见 `docs/agents/triage-labels.md`。
+triage 状态机使用五个默认标签：`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`，另有 `parked` 标记刻意搁置的 issue。详见 `docs/agents/triage-labels.md`。
 
 ### Domain docs
 

@@ -192,16 +192,20 @@ _Avoid_: 在新代码/文档里用 clue/线索 指代场景或道具——规范
 
 ### 剧本与分镜
 
+**骨架（skeleton / 骨架种类 skeleton kind）**：
+剧本条目数组的结构种类，四值：`segments`（说书片段）/ `scenes`（剧集场景）/ `shots`（广告镜头）/ `video_units`（参考生视频单元）。骨架是由 content_mode 与 generation_mode 两轴**派生**的概念，本身不是第三条轴：narration/drama/ad 各对应前三种骨架；narration/drama 在 generation_mode=reference_video 下整体换用 video_units 骨架，ad 骨架恒为 shots、不随生成路径变（见 `docs/adr/0033`）。对骨架有两种合法提问——**规范性**（按项目/剧集的模式配置，这份剧本*应该*是什么骨架）与**取证性**（这份剧本数据*实际*是什么骨架）；两者在部分迁移等中间态下可能不一致，取证以数据形状优先。骨架知识收归零依赖叶子模块 `lib/script_skeleton.py`：以骨架种类为键的窄表 `SKELETONS`（键即条目数组键，行 `Skeleton(id_field, chars_field)`，`video_units` 无逐条角色名单故 `chars_field=None`）+ **规范解析** `resolve_declared_kind(content_mode, generation_mode)`（服务手持项目配置的消费方，未知/缺失 content_mode 抛 `ValueError`）+ **取证解析** `resolve_script_kind(script)`（服务手持剧本数据的消费方，保留数据形状优先的容忍阶梯）；两个解析器是全体消费方分派骨架的单一入口，设计依据见 `docs/adr/0045`。
+_Avoid_: 把骨架当第四个 content_mode 或 content_mode 的同义词（三值轴推不出四种骨架）；把规范性与取证性两问混同（配置已改 reference_video 但数据仍在 segments 时，编辑要跟数据走）；对未知模式做「非 narration 即 drama」式二值兜底（`docs/adr/0033` 禁令）。
+
 **宫格（grid）**：
 把同一段落多个场景合并成一张 N 格联合大图一次生成（grid_4/6/9）、再切割成各场景首尾帧的分镜生成路径；与逐张图生视频（storyboard）同为 generation_mode 下的「分镜→视频」路径，核心价值在一次生成保证画风/角色一致。
 _Avoid_: 把 reference_video 当作与 grid/storyboard 同维度的第三个平级取值——它跳过分镜、是凌驾于 content_mode 之上的独立骨架，并非这种「分镜→视频」路径；逐张模式的规范值是 storyboard，而非旧用语 single。
 
 **广告/短片模式（ad）**：
 content_mode 第三值，产出单个约 `target_duration` 秒的短视频而非多集系列。剧本骨架为平铺 `shots[]`（`shot_id` 格式 E1S{n}），每镜头携带 `section`（带货框架段落标签，八值引导不硬枚举）与一等口播文案 `voiceover_text`；项目恒单集（episodes 恒为第 1 集单条），项目级新字段 `target_duration`（正整数秒）与 `brief`（创作诉求短文本，不走 source_loader），不持有 `default_duration`；generation_mode 仅开放 storyboard 与 reference_video（见 `docs/adr/0033`）。剧本一键生成不走 step1 中间文件：prompt 直接来自 brief + 产品信息（含 selling_points）+ 审定的带货八段框架配比表（15/30/60/90 取最近档位，依据见 `docs/research/arcreel-ad-section-timing-research.md`），products 为空自动分流通用短片 prompt；镜头时长约束随生成路径切换——storyboard 为 supported_durations 硬枚举、reference_video 为 1-15 秒自由整数；剧本总时长偏离 `target_duration` 超阈值仅 warn 不阻塞。
-_Avoid_: 让 ad 落入「非 narration 即 drama」的二值兜底——所有按 content_mode 分派的机制必须显式处理第三值；把 AdShot 与 video_unit 内的 shot（参考生视频子镜头）混为一谈——前者是剧本骨架的平铺镜头、后者是 unit 内时间编排。
+_Avoid_: 让 ad 落入「非 narration 即 drama」的二值兜底——所有按 content_mode 分派的机制必须显式处理第三值；把 AdShot 与 video_unit 内的 shot（参考生视频子镜头）混为一谈——前者是剧本骨架的平铺镜头、后者是 unit 内时间编排；把 ad 未接入 step1→step2 审核 gate 当作待补缺口——单发生成、无 step1 中间态是有意契约，重访条件见 `.out-of-scope/ad-step1-step2-review-gate.md`。
 
 **video_unit / shot（参考生视频单元）**：
-参考生视频模式下的生成单元：一个 video_unit 含 1–4 个 shot（子镜头），整 unit 共享一组按顺序编号的参考图（`[图N]`），跳过分镜直接由资产图生成。narration/drama 下剧本用 `video_units[]` 而非 `segments[]` / `scenes[]` 组织（unit 内容自包含）；ad 下骨架不变，unit 是从 `shots[]` **派生分组**的轻量索引（剧本 `reference_units[]`，仅引用 shot_id + 继承的参考集，产品参考绝对优先）——连续镜头、每 unit ≤4 shot、总长受供应商时长上限约束，分组为纯函数（`lib/reference_video/ad_units.py`）、可复现，成员与参考集未变的 unit 重派生时保留产物。
+参考生视频模式下的生成单元：一个 video_unit 含 1–4 个 shot（子镜头），整 unit 共享一组按顺序编号的参考图（`[图N]`），跳过分镜直接由资产图生成。narration/drama 下剧本用 `video_units[]` 而非 `segments[]` / `scenes[]` 组织（unit 内容自包含）；ad 下骨架不变，unit 是从 `shots[]` **派生分组**的轻量索引（剧本 `reference_units[]`，仅引用 shot_id + 继承的参考集，产品参考绝对优先）——连续镜头、每 unit ≤4 shot、总长受供应商时长上限约束，分组为纯函数（`lib/reference_video/ad_units.py`）、可复现，成员与参考集未变的 unit 重派生时保留产物。**产物口径以 unit 为准**：ad+参考路径的成片（`generated_assets.video_clip` 等）挂在 `reference_units[]` 各 unit 上，`shots` 不承载该路径产物；所有消费方（计分 `StatusCalculator`、剪映导出、项目事件差分）按项目声明的 generation_mode 分派后一律读 unit 产物，不读 shots、不嗅探数据形状（残留索引不得污染 storyboard 路径行为）。
 _Avoid_: 把 shot 与 segment（说书片段）/ DramaScene（剧集场景）混为一谈；「scene」在参考模式下三义须分辨——场景资产（scene_sheet）、剧本分镜场景（DramaScene）、镜头（shot）；手工增删改 ad 的 reference_units——它是派生物，shots 才是内容唯一真相。
 
 **发声条目（utterance）**：
@@ -234,7 +238,7 @@ project.json 顶层字段，下一批分集规划在源文中的起点（`{sourc
 _Avoid_: 把 `_remaining.txt` 当进度真相源（损坏即不可恢复正是账本要消除的旧模式）；把非空 cursor 当绝对最新——重跑回填只补新集范围、不前移非空值，规划起点以账本锚定范围末尾与 cursor 的较后者为准。
 
 **分集规划（plan / replan）**：
-服务端分集规划能力（`lib/episode_planner.EpisodePlanner` + SDK 工具 `plan_episodes` / `replan_episodes`）：从 planning_cursor 起读一个源文窗口，调项目配置的文本模型一次规划窗口内所有剧情弧完整的集（标题/钩子/范围；drama 含分集大纲），schema 强约束 + 锚点存在/唯一/连续机械校验失败自动重试，同一把项目锁内写账本、派生集文件并清理残留。replan 按用户自由文本意见从 from_episode 起局部重排：范围跨多个源文件时按文件拆为多段独立重切（单集不跨文件，文件边界即集边界，集号跨段连续编号）；波及已消费集需显式确认（标 stale），全局性意见（每集体量）回写项目设置（见 `docs/adr/0032`）。
+服务端分集规划能力（`lib/episode_planner.EpisodePlanner` + SDK 工具 `plan_episodes` / `replan_episodes`）：从 planning_cursor 起读一个源文窗口，调项目配置的文本模型一次规划窗口内所有剧情弧完整的集（标题/钩子/范围；drama 含分集大纲），schema 强约束 + 锚点存在/唯一/连续机械校验失败自动重试，同一把项目锁内写账本、派生集文件并清理残留。plan 接收可选常驻 `instructions`（用户分集偏好，如按章节对齐切分）：非空时以「必须全部落实」的强度注入规划 prompt、优先于默认剧情弧完整性；不持久化，规划分多批时须由 agent 逐批重复携带，缺省/空白则与今日纯剧情弧行为逐字一致。replan 按用户自由文本意见从 from_episode 起局部重排：范围跨多个源文件时按文件拆为多段独立重切（单集不跨文件，文件边界即集边界，集号跨段连续编号）；波及已消费集需显式确认（标 stale），全局性意见（每集体量）回写项目设置作为结构化全局意见、后续批次自动继承（与 plan 逐批携带、不持久化的 `instructions` 相对；见 `docs/adr/0032`）。
 _Avoid_: 让主 agent 自行读原文选切分点（peek/split 脚本是被替代的旧模式）；窗口字数/每批集数硬编码到指令——它们是工具内部默认，`planning_window_chars` / `planning_max_episodes` 项目设置可覆盖。
 
 ### 智能体运行时
@@ -242,6 +246,22 @@ _Avoid_: 让主 agent 自行读原文选切分点（peek/split 脚本是被替�
 **SessionActor**：
 每个 Claude 会话一个专属 asyncio task，串行化该会话对 `ClaudeSDKClient` 的所有协议调用（connect / query / 中断 / disconnect）；SDK 客户端并发调用不安全，actor 就是这条串行化边界（见 `docs/adr/0028`）。
 _Avoid_: 与 ManagedSession（会话内存状态容器）混为一谈——actor 是执行通道、ManagedSession 是状态；直接调用 `client.disconnect()` / consumer_task 是已被替代的旧模式。
+
+**SDK transcript（agent 记忆）**：
+SDK 按自身协议写入的会话记录（DB 镜像或 jsonl），唯一职责是供 SDK resume 重建 agent 上下文——它是 **agent 的记忆**，格式与写入时机均由 SDK 决定，ArcReel 无权改造、不得混入 UI 专有条目（会被 resume 喂回 agent 造成污染）。
+_Avoid_: 把 transcript 当 UI 对话时间线的数据源——UI 唯一读源是会话事件日志；向 transcript 写入服务端合成事件。
+
+**会话事件日志（session event log）**：
+UI 对话时间线的**唯一读源**：每会话一条单调递增序号（cursor）的事件序列，实时流、断线重连、历史回放三种场景读同一份。条目在**写入点定型**——SDK 消息流与服务端合成事件（用户消息受理、中断、子任务进度等）在入日志那一刻完成语义识别与规范化。定位是 transcript 的**物化视图**：可从 transcript 重放重建（旧会话首次访问时懒生成），删除不丢真相。用户消息由服务端**先写日志分配身份再回显**，前端不渲染任何本地合成消息。skill 调用条目只记 skill 名与入参，注入全文不进日志（全文只活在 transcript）。
+_Avoid_: 把它当第二真相源与 transcript 对账——漂移的修复手段是重放重建，不是双向同步；把 UI 投影概念（turn 分组等）烧进日志条目——日志存稳定事实，投影留给读取端；在读取端做去重或语义嗅探——定型只发生在写入点一处。
+
+**流式预览态（draft）**：
+正在流式生成、尚未完成的 assistant 消息在服务端内存中的唯一预览表示，身份即其 `message_id`；消息完成时被同 `message_id` 的日志权威条目**精确替换**。不入日志、不落盘——服务崩溃即丢，与 agent 记忆一致（SDK 同样不记得未完成的消息）。断线重连时随首帧快照携带当前累积态。
+_Avoid_: 用内容比对判断 draft 与已提交内容的重复——对应关系只认 `message_id`；把 draft 做成日志条目的 pending 状态（破坏日志 append-only）。
+
+**子时间线（subagent timeline）**：
+同一会话内由 parent_tool_use_id 归组的 subagent 消息序列。subagent 的工具调用与回复作为带 parent 标记的日志条目**全量收录**，但主时间线上只呈现单一可折叠的子任务卡片（默认收起，显示描述+状态+进度），展开才见子时间线。
+_Avoid_: 把 subagent 消息平铺进主时间线；只收进度事件不收内部消息——展开子时间线的前提是内部消息在日志里。
 
 **agent 运行 profile（agent runtime profile）**：
 智能体专属的运行态配置树（`agent_runtime_profile/`：系统 prompt 变体 + 业务 Skill/Subagent），与开发者本地 `.claude/` **物理分离**，运行时按 manifest 物化进各项目目录。
@@ -254,6 +274,14 @@ _Avoid_: 用「同步 / 复制 / deploy」泛指——物化特指 manifest 驱�
 **agent 沙箱（agent sandbox）**：
 Agent 工具调用外围的内核级隔离层（macOS Seatbelt / Linux bwrap），约束**沙箱内所有子进程**（Bash 及其派生进程）的文件读写与网络；SDK 内置 Read/Write/Edit/Glob/Grep 运行在主进程、不经过沙箱，由应用层 PreToolUse hook 拦截（见 `docs/adr/0025`、`docs/adr/0026`）。
 _Avoid_: 用「沙箱」泛指应用层路径围栏 hook——沙箱专指内核级那一层；Windows 无内核沙箱，Bash 降级到前缀白名单。
+
+**AgentAccessPolicy（agent 访问规则）**：
+「agent 能碰什么」的单一规则真相源（`server/agent_runtime/agent_access_policy.py`）：以进程级根路径 + `sandbox_enabled` 纯构造、零 I/O，同一份规则做两种投影——为内核沙箱编译 SandboxSettings（denyRead/denyWrite/网络域名单），为应用层 hook 提供逐次读/写/命令裁决与 Bash 密钥剥离包装；Windows 降级（Bash 前缀白名单）收在类内，与「包装破坏白名单匹配」的互斥约束同处一地（见 `docs/adr/0046`）。SDK 封皮（hook 签名、权限结果类型、权限链顺序）留在 SessionManager 薄 adapter。
+_Avoid_: SandboxPolicy——「agent 沙箱」专指内核级隔离层，本类同时服务不属于沙箱的应用层 hook；把凭证注入并入本类（注入读 DB，破坏纯构造）；在类内 import SDK 类型。
+
+**SseChannel（订阅广播通道）**：
+参数化的 SSE 订阅广播组件（`server/sse_channel.py`），会话消息流与项目事件流共用，职责限于订阅/退订、广播、空闲心跳、溢出处理，两处差异全部经参数表达：溢出策略（会话流「逐出非关键消息 + 溢出信号，流结束即重连信号」 vs 项目事件流「移除订阅者、无信号，断线靠心跳自检」）与可选的首/末订阅者生命周期钩子（项目事件流用于启停后台扫描）。开场白（会话流缓冲回放、项目事件流初始快照）不进组件，订阅与开场白的原子性由消费方在订阅侧的同步临界区保证（见 `docs/adr/0046`）。
+_Avoid_: 把开场白生产塞进组件——缓冲回放与扫描快照无一行共同实现，参数化即假抽象；强行统一两种溢出语义；给已废弃的任务流端点（数据库轮询式）接入。
 
 ### 认证与凭证
 

@@ -412,6 +412,33 @@ class TestPlan:
         assert (project_dir / "project.json").read_text(encoding="utf-8") == before
         assert not list((project_dir / "source").glob("episode_*.txt"))
 
+    async def test_plan_truncation_short_circuits_retry_and_hints_leverage(self, tmp_path: Path):
+        """结构化输出被截断时不重试，直接冒泡 EpisodePlanningError 并附带调小窗口/集数的提示（见 docs/adr/0044）。"""
+        from lib.text_backends.base import TextOutputTruncatedError
+
+        class _TruncatingGenerator:
+            model = "fake-model"
+
+            def __init__(self):
+                self.call_count = 0
+
+            async def generate(self, request, project_name=None):
+                self.call_count += 1
+                raise TextOutputTruncatedError(provider="fake", model="fake-model", output_tokens=64000)
+
+        project_dir = _write_project(tmp_path)
+        before = (project_dir / "project.json").read_text(encoding="utf-8")
+        fake = _TruncatingGenerator()
+
+        with pytest.raises(EpisodePlanningError) as exc_info:
+            await EpisodePlanner(project_dir, generator=fake).plan()
+
+        # 截断不重试：只发生一次调用，不像 schema/机械校验失败那样耗尽 max_attempts
+        assert fake.call_count == 1
+        assert "planning_window_chars" in str(exc_info.value)
+        assert "planning_max_episodes" in str(exc_info.value)
+        assert (project_dir / "project.json").read_text(encoding="utf-8") == before
+
     async def test_plan_accepts_uppercase_json_fence(self, tmp_path: Path):
         """模型输出大写 ```JSON 围栏也能解析（围栏标记不区分大小写）。"""
         project_dir = _write_project(tmp_path)
@@ -701,6 +728,47 @@ class TestPlan:
         assert eps[1]["ledger_status"] == "unanchored"
         assert eps[2]["ledger_status"] == "planned"
 
+    async def test_plan_forwards_instructions_into_prompt(self, tmp_path: Path):
+        """首批规划带 instructions 时，原文进「用户规划意见（必须全部落实）」分节，不用 replan 的「重排」措辞。"""
+        project_dir = _write_project(tmp_path)
+        fake = _FakeTextGenerator(
+            [_plan_response([{"title": "古玉藏诀", "hook": "剑诀来历成谜", "end_anchor": ANCHOR_EP1}])]
+        )
+
+        await EpisodePlanner(project_dir, generator=fake).plan(instructions="严格按章节切分，一章一集")
+
+        prompt = fake.requests[0].prompt
+        assert "# 用户规划意见（必须全部落实）" in prompt
+        assert "严格按章节切分，一章一集" in prompt
+        assert "用户重排意见" not in prompt  # 首批不是重排
+
+    async def test_plan_without_instructions_omits_section(self, tmp_path: Path):
+        """不传 instructions 时 prompt 无指令分节，与今日纯剧情弧行为逐字一致。"""
+        project_dir = _write_project(tmp_path)
+        fake = _FakeTextGenerator(
+            [_plan_response([{"title": "古玉藏诀", "hook": "剑诀来历成谜", "end_anchor": ANCHOR_EP1}])]
+        )
+
+        await EpisodePlanner(project_dir, generator=fake).plan()
+
+        prompt = fake.requests[0].prompt
+        assert "用户规划意见" not in prompt
+        assert "必须全部落实" not in prompt
+
+    async def test_plan_blank_instructions_treated_as_absent(self, tmp_path: Path):
+        """纯空白 instructions strip 后视同未传：prompt 与不传时逐字一致（无指令分节）。"""
+        blank = _FakeTextGenerator(
+            [_plan_response([{"title": "古玉藏诀", "hook": "剑诀来历成谜", "end_anchor": ANCHOR_EP1}])]
+        )
+        none = _FakeTextGenerator(
+            [_plan_response([{"title": "古玉藏诀", "hook": "剑诀来历成谜", "end_anchor": ANCHOR_EP1}])]
+        )
+
+        await EpisodePlanner(_write_project(tmp_path / "b"), generator=blank).plan(instructions="   \n  ")
+        await EpisodePlanner(_write_project(tmp_path / "n"), generator=none).plan()
+
+        assert blank.requests[0].prompt == none.requests[0].prompt
+
 
 def _entry(
     num: int,
@@ -787,6 +855,7 @@ class TestReplan:
         result = await EpisodePlanner(project_dir, generator=fake).replan(2, "第2集在下山处收尾")
 
         prompt = fake.requests[0].prompt
+        assert "# 用户重排意见（必须全部落实）" in prompt  # replan 保留「重排」措辞
         assert "第2集在下山处收尾" in prompt  # 用户意见进 prompt
         assert "钩子1" in prompt  # 之前的集作为已定上下文
         assert ANCHOR_EP1 not in prompt  # 已定范围的原文不重发

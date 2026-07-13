@@ -30,10 +30,16 @@ from lib.episode_ledger import (
     normalize_source_text,
     parse_episode_num,
 )
+from lib.episode_paths import episode_script_relpath
 from lib.project_manager import ProjectManager, resolve_source_kind
-from lib.text_backends.base import TextGenerationRequest, TextTaskType
+from lib.text_backends.base import (
+    DEFAULT_MAX_OUTPUT_TOKENS,
+    TextGenerationRequest,
+    TextOutputTruncatedError,
+    TextTaskType,
+)
 from lib.text_generator import TextGenerator
-from lib.text_metrics import count_reading_units
+from lib.text_metrics import count_reading_units, reading_unit_noun
 from lib.text_utils import strip_json_code_fences
 
 logger = logging.getLogger(__name__)
@@ -41,8 +47,6 @@ logger = logging.getLogger(__name__)
 # 窗口/批量内部默认值；project.json 顶层同名字段可覆盖
 DEFAULT_PLANNING_WINDOW_CHARS = 30000
 DEFAULT_PLANNING_MAX_EPISODES = 20
-
-PLANNING_MAX_OUTPUT_TOKENS = 16000
 
 # LLM 输出未通过 schema / 机械校验时的总尝试次数（含首次）
 _MAX_PLAN_ATTEMPTS = 3
@@ -315,7 +319,7 @@ def _ledger_entry_from_draft(
     entry: dict[str, Any] = {
         "episode": num,
         "title": draft_ep.title,
-        "script_file": script_file or f"scripts/episode_{num}.json",
+        "script_file": script_file or episode_script_relpath(num),
         "source_range": {"source_file": source_rel, "start": start, "end": end},
         "hook": draft_ep.hook,
         "ledger_status": status,
@@ -388,12 +392,17 @@ class EpisodePlanner:
 
     # ---------------------------------------------------------------- plan
 
-    async def plan(self) -> PlanResult:
+    async def plan(self, instructions: str | None = None) -> PlanResult:
         """规划下一批集：从 planning_cursor 起的窗口产出剧情弧完整的集并提交账本。
 
         当前源文件已无剩余有效内容时按文件名序自动推进到下一个源文件；
         ``source_exhausted=True`` 表示全部源文件都已规划完毕。
+
+        ``instructions`` 是可选的用户分集偏好（如按章节对齐切分），strip 后为空视同未传；
+        非空则以「必须全部落实」的强度注入规划 prompt，优先于默认剧情弧完整性。规划按窗口
+        分多批、指令不持久化，调用方须在每批 plan 调用都重复带上。
         """
+        planning_instructions = (instructions or "").strip() or None
         project = backfill_episode_ledger(self.project_path, self.pm.load_project(self.project_name))
         start_ref = self._effective_start(project)
         source_rel, start = start_ref
@@ -422,8 +431,9 @@ class EpisodePlanner:
                 max_episodes=max_episodes,
                 content_mode=content_mode,
                 context_entries=_context_entries(project),
-                instructions=None,
+                instructions=planning_instructions,
                 fixed_boundary=False,
+                is_replan=False,
                 failure=failure,
             )
 
@@ -545,6 +555,7 @@ class EpisodePlanner:
                     context_entries=context,
                     instructions=instructions,
                     fixed_boundary=True,
+                    is_replan=True,
                     slice_position=(slice_idx + 1, total_slices),
                     failure=failure,
                 )
@@ -718,19 +729,30 @@ class EpisodePlanner:
         snap_whitespace_tail: bool = False,
         max_episodes: int | None,
     ) -> tuple[list[NarrationEpisodeDraft], list[int], BaseModel]:
-        """LLM 调用 + schema/机械校验循环；重试 prompt 附上一轮失败原因。"""
+        """LLM 调用 + schema/机械校验循环；重试 prompt 附上一轮失败原因。
+
+        结构化输出被输出上限截断时 :class:`TextOutputTruncatedError` 直接短路本循环——
+        重发同一份必然再截断的请求没有意义；追加本规划器特有的杠杆提示（调小窗口字数 /
+        每批集数）后转为 :class:`EpisodePlanningError` 冒泡（见 docs/adr/0044）。
+        """
         if self.generator is None:
             raise RuntimeError("TextGenerator 未初始化，请使用 EpisodePlanner.create() 工厂方法")
         failure: list[str] | None = None
         for attempt in range(1, self.max_attempts + 1):
-            result = await self.generator.generate(
-                TextGenerationRequest(
-                    prompt=prompt_builder(failure),
-                    response_schema=draft_model,
-                    max_output_tokens=PLANNING_MAX_OUTPUT_TOKENS,
-                ),
-                project_name=self.project_name,
-            )
+            try:
+                result = await self.generator.generate(
+                    TextGenerationRequest(
+                        prompt=prompt_builder(failure),
+                        response_schema=draft_model,
+                        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
+                    ),
+                    project_name=self.project_name,
+                )
+            except TextOutputTruncatedError as exc:
+                raise EpisodePlanningError(
+                    f"{exc}也可调小项目设置 planning_window_chars（单批窗口字数）或 "
+                    "planning_max_episodes（单批集数上限）以缩小本批输出体量后重试。"
+                ) from exc
             try:
                 draft = self._parse_draft(result.text, draft_model)
                 drafts = list(getattr(draft, "episodes"))
@@ -957,18 +979,20 @@ def _build_planning_prompt(
     context_entries: list[dict[str, Any]],
     instructions: str | None,
     fixed_boundary: bool,
+    is_replan: bool,
     failure: list[str] | None,
     slice_position: tuple[int, int] | None = None,
 ) -> str:
     """plan / replan 共用的规划 prompt。仅面向文本模型，不做 i18n。
 
-    ``slice_position=(第几段, 总段数)`` 标记当前 prompt 在重排范围中的位置；
-    总段数大于 1（范围跨多个源文件）时注入跨文件说明，提示模型用户意见中与
-    本段无关的部分由其他段落实。
+    ``instructions`` 非空时以「必须全部落实」的强度注入一个用户意见分节，分节 header 按
+    ``is_replan`` 区分措辞（plan 用「用户规划意见」、replan 用「用户重排意见」）；为空则不注入，
+    prompt 与无指令时逐字一致。``slice_position=(第几段, 总段数)`` 标记当前 prompt 在重排范围
+    中的位置；总段数大于 1（范围跨多个源文件）时注入跨文件说明，提示模型用户意见中与本段
+    无关的部分由其他段落实。
     """
     overview = project.get("overview") or {}
-    language = str(project.get("source_language") or "zh")
-    unit_name = "词" if language in ("en", "vi") else "字"
+    unit_name = reading_unit_noun(_language_of(project))
     target_units = project.get("episode_target_units")
     is_screenplay = resolve_source_kind(project) == "screenplay"
 
@@ -999,7 +1023,8 @@ def _build_planning_prompt(
             lines.append(f"- 第 {entry.get('episode')} 集《{title}》 钩子：{hook}")
 
     if instructions:
-        lines += ["", "# 用户重排意见（必须全部落实）", instructions]
+        instructions_header = "# 用户重排意见（必须全部落实）" if is_replan else "# 用户规划意见（必须全部落实）"
+        lines += ["", instructions_header, instructions]
     if slice_position is not None and slice_position[1] > 1:
         current, total = slice_position
         lines += [

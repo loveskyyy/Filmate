@@ -31,9 +31,13 @@ export default defineConfig({
         "src/stores/**/*.ts",
         "src/hooks/useTasksSSE.ts",
         "src/hooks/useScrollTarget.ts",
+        "src/hooks/useProjectEventsSSE.ts",
         "src/router.tsx",
         "src/components/pages/ProjectsPage.tsx",
         "src/components/canvas/StudioCanvasRouter.tsx",
+        "src/components/canvas/EpisodeSourceReview.tsx",
+        "src/components/canvas/timeline/TimelineCanvas.tsx",
+        "src/components/copilot/AgentCopilot.tsx",
       ],
       reporter: ["text", "json-summary", "lcov"],
       thresholds: {

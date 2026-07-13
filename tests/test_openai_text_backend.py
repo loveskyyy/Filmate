@@ -472,12 +472,37 @@ class TestInstructorFallback:
         assert _is_schema_error(ValueError("other")) is False
         assert _is_schema_error(RuntimeError("test")) is False
 
+    async def test_fallback_transient_error_does_not_replay_native_call(self):
+        """降级路径瞬态错误只在降级层重试，不重放已成功（已计费）的原生调用。"""
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=_make_mock_response("非 JSON 散文"))
+
+        import pytest
+
+        with (
+            patch("lib.openai_shared.AsyncOpenAI", return_value=mock_client),
+            patch(
+                "lib.text_backends.instructor_support.instructor_fallback_async",
+                new=AsyncMock(side_effect=ConnectionError("503 service unavailable")),
+            ) as mock_instructor,
+            patch("lib.retry.asyncio.sleep", new=AsyncMock()),
+        ):
+            from lib.text_backends.openai import OpenAITextBackend
+
+            backend = OpenAITextBackend(api_key="test-key")
+            request = TextGenerationRequest(prompt="Extract info", response_schema=_PersonSchema)
+            with pytest.raises(ConnectionError):
+                await backend.generate(request)
+
+        # 原生 200 调用只发生一次；降级层自身重试 4 次穷尽
+        mock_client.chat.completions.create.assert_awaited_once()
+        assert mock_instructor.await_count == 4
+
 
 class TestMaxOutputTokens:
     """官方端点用 max_completion_tokens，兼容端点保守沿用 max_tokens。"""
 
-    async def test_official_plain_passes_max_completion_tokens(self, monkeypatch):
-        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    async def test_official_plain_passes_max_completion_tokens(self):
         mock_client = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=_make_mock_response("ok"))
         with patch("lib.openai_shared.AsyncOpenAI", return_value=mock_client):
@@ -490,8 +515,7 @@ class TestMaxOutputTokens:
         assert call_kwargs["max_completion_tokens"] == 32000
         assert "max_tokens" not in call_kwargs
 
-    async def test_official_structured_passes_max_completion_tokens(self, monkeypatch):
-        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    async def test_official_structured_passes_max_completion_tokens(self):
         mock_client = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=_make_mock_response(json.dumps({"name": "x"})))
         with patch("lib.openai_shared.AsyncOpenAI", return_value=mock_client):
@@ -507,8 +531,7 @@ class TestMaxOutputTokens:
         assert call_kwargs["max_completion_tokens"] == 24000
         assert "max_tokens" not in call_kwargs
 
-    async def test_no_max_tokens_means_key_absent(self, monkeypatch):
-        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    async def test_no_max_tokens_means_key_absent(self):
         mock_client = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=_make_mock_response("ok"))
         with patch("lib.openai_shared.AsyncOpenAI", return_value=mock_client):
@@ -547,9 +570,8 @@ class TestMaxOutputTokens:
         assert call_kwargs["max_completion_tokens"] == 32000
         assert "max_tokens" not in call_kwargs
 
-    async def test_official_dict_schema_fallback_uses_max_completion_tokens(self, monkeypatch):
+    async def test_official_dict_schema_fallback_uses_max_completion_tokens(self):
         """dict-schema 降级路径（json_object 模式）也按端点选参数。"""
-        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
         mock_client = AsyncMock()
         fallback_json = json.dumps({"name": "x"})
         mock_client.chat.completions.create = AsyncMock(
@@ -593,9 +615,8 @@ class TestMaxOutputTokens:
         assert second_call_kwargs["max_tokens"] == 8000
         assert "max_completion_tokens" not in second_call_kwargs
 
-    async def test_official_instructor_fallback_uses_max_completion_tokens(self, monkeypatch):
+    async def test_official_instructor_fallback_uses_max_completion_tokens(self):
         """Pydantic instructor 降级路径端到端穿透到 create_with_completion。"""
-        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
         mock_client = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(side_effect=_make_bad_request_error())
 
@@ -622,3 +643,47 @@ class TestMaxOutputTokens:
         instructor_kwargs = mock_patched.chat.completions.create_with_completion.call_args[1]
         assert instructor_kwargs["max_completion_tokens"] == 7000
         assert "max_tokens" not in instructor_kwargs
+
+
+class TestTruncation:
+    """结构化输出被截断时抛 TextOutputTruncatedError；自由文本仅告警（见 docs/adr/0044）。"""
+
+    async def test_structured_truncation_raises(self):
+        import pytest
+
+        from lib.text_backends.base import TextOutputTruncatedError
+
+        mock_client = AsyncMock()
+        response = _make_mock_response(json.dumps({"name": "x"}))
+        response.choices[0].finish_reason = "length"
+        mock_client.chat.completions.create = AsyncMock(return_value=response)
+
+        with patch("lib.openai_shared.AsyncOpenAI", return_value=mock_client):
+            from lib.text_backends.openai import OpenAITextBackend
+
+            class MyModel(BaseModel):
+                name: str
+
+            backend = OpenAITextBackend(api_key="k")
+            with pytest.raises(TextOutputTruncatedError) as exc_info:
+                await backend.generate(TextGenerationRequest(prompt="hi", response_schema=MyModel))
+
+        assert exc_info.value.model == "gpt-5.4-mini"
+
+    async def test_free_text_truncation_only_warns(self, caplog):
+        import logging
+
+        response = _make_mock_response("partial")
+        response.choices[0].finish_reason = "length"
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=response)
+
+        with patch("lib.openai_shared.AsyncOpenAI", return_value=mock_client):
+            from lib.text_backends.openai import OpenAITextBackend
+
+            backend = OpenAITextBackend(api_key="k")
+            with caplog.at_level(logging.WARNING, logger="lib.text_backends.base"):
+                result = await backend.generate(TextGenerationRequest(prompt="hi"))
+
+        assert result.text == "partial"
+        assert any("被截断" in r.message for r in caplog.records)

@@ -24,6 +24,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi import Path as FastAPIPath
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ValidationError as PydanticValidationError
 from starlette.background import BackgroundTask
 
 logger = logging.getLogger(__name__)
@@ -817,8 +818,7 @@ async def delete_project(name: str, _user: CurrentUser, _t: Translator):
     try:
 
         def _sync():
-            project_dir = get_project_manager().get_project_path(name)
-            shutil.rmtree(project_dir)
+            get_project_manager().delete_project_directory(name)
             return {"success": True, "message": _t("project_deleted", name=name)}
 
         return await asyncio.to_thread(_sync)
@@ -881,6 +881,7 @@ async def update_scene(name: str, scene_id: str, req: UpdateSceneRequest, _user:
                                     "scenes",
                                     "props",
                                     "segment_break",
+                                    "utterances",
                                     "note",
                                 ]:
                                     if value is None and key != "note":
@@ -1270,7 +1271,9 @@ async def set_project_source(
                 result["overview"] = overview
             except Exception as ov_err:
                 result["overview"] = None
-                result["overview_error"] = str(ov_err)
+                result["overview_error"] = (
+                    _t("overview_ai_response_invalid") if isinstance(ov_err, PydanticValidationError) else str(ov_err)
+                )
 
         return result
     except HTTPException:
@@ -1295,6 +1298,11 @@ async def generate_overview(name: str, _user: CurrentUser, _t: Translator):
         return {"success": True, "overview": overview}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
+    except PydanticValidationError:
+        # 模型输出未通过 schema 校验（后端降级仍失守时的最后防线），
+        # 裸 pydantic 错误串含模型原始输出片段，不透传给用户
+        logger.exception("概述生成响应解析失败")
+        raise HTTPException(status_code=400, detail=_t("overview_ai_response_invalid"))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:

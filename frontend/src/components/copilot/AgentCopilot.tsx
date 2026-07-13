@@ -265,15 +265,22 @@ export function AgentCopilot() {
   const handleSend = useCallback(() => {
     if (inputDisabled || (!localInput.trim() && attachedImages.length === 0)) return;
     imageGenRef.current += 1; // invalidate pending FileReader callbacks
-    voidCall(sendMessage(localInput.trim(), attachedImages.length > 0 ? attachedImages : undefined));
-    setLocalInput("");
-    setAttachedImages([]);
-    setAttachError(null);
     setShowSlashMenu(false);
-    // Reset textarea height
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
+    // 发送期间输入锁定（sending 置位）；受理成功才清空，失败保留内容供重试
+    voidCall(
+      sendMessage(localInput.trim(), attachedImages.length > 0 ? attachedImages : undefined).then(
+        (accepted) => {
+          if (!accepted) return;
+          setLocalInput("");
+          setAttachedImages([]);
+          setAttachError(null);
+          // Reset textarea height
+          if (textareaRef.current) {
+            textareaRef.current.style.height = "auto";
+          }
+        },
+      ),
+    );
   }, [inputDisabled, localInput, attachedImages, sendMessage]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -357,6 +364,22 @@ export function AgentCopilot() {
     textareaRef.current?.focus();
   }, [localInput]);
 
+  // 消费外部投递的一次性预填文本（如分集空态 CTA 经 store.input 投递）：
+  // 写入本地输入框后清空 store 字段，避免残留触发重复预填。
+  // 覆盖而非追加——预填来自用户的明确点击意图。
+  useEffect(() => {
+    return useAssistantStore.subscribe((state, prev) => {
+      if (!state.input || state.input === prev.input) return;
+      setLocalInput(state.input);
+      // 延后到微任务清空，避免在 zustand 订阅通知期间嵌套 dispatch
+      void Promise.resolve().then(() => {
+        useAssistantStore.getState().setInput("");
+      });
+      // 面板可能同帧刚被打开（inert 尚未移除），等一帧再聚焦
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    });
+  }, []);
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -402,7 +425,7 @@ export function AgentCopilot() {
           >
             <Bot className="h-3.5 w-3.5" />
           </div>
-          {isRunning ? (
+          {isRunning || sending ? (
             <span
               className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[12px]"
               style={{ color: "var(--color-accent-2)" }}
@@ -479,7 +502,7 @@ export function AgentCopilot() {
           </div>
         )}
         {allTurns.map((turn, i) => (
-          <ChatMessage key={turn.uuid || `turn-${i}`} message={turn} />
+          <ChatMessage key={turn.uuid || `turn-${i}`} message={turn} streaming={turn === draftTurn} />
         ))}
       </div>
 

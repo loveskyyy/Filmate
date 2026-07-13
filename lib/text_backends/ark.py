@@ -71,23 +71,33 @@ class ArkTextBackend:
     def capabilities(self) -> set[TextCapability]:
         return self._capabilities
 
-    @with_retry_async()
     async def generate(self, request: TextGenerationRequest) -> TextGenerationResult:
+        """生成文本回复。
+
+        本方法不带重试装饰器：瞬态错误重试在单次调用层（:meth:`_call_chat_completions`
+        与 :meth:`_structured_fallback`）完成。若把复验/降级也包进重试范围，降级尝试的
+        失败会连带重放已成功的原生调用（重试叠乘）。
+        """
         if request.response_schema:
             return await self._generate_structured(request)
         return await self._generate_plain(request)
+
+    @with_retry_async()
+    async def _call_chat_completions(self, kwargs: dict, *, structured: bool) -> TextGenerationResult:
+        """单次 chat.completions 调用：日志、发请求、解析与截断处理，瞬态错误重试。"""
+        logger.info("调用 %s 文本 SDK kwargs=%s", self.name, format_kwargs_for_log(kwargs))
+        response = await asyncio.to_thread(
+            self._client.chat.completions.create,
+            **kwargs,
+        )
+        return self._parse_chat_response(response, structured=structured)
 
     async def _generate_plain(self, request: TextGenerationRequest) -> TextGenerationResult:
         messages = self._build_messages(request)
         kwargs: dict = {"model": self._model, "messages": messages}
         if request.max_output_tokens is not None:
             kwargs["max_tokens"] = request.max_output_tokens
-        logger.info("调用 %s 文本 SDK kwargs=%s", self.name, format_kwargs_for_log(kwargs))
-        response = await asyncio.to_thread(
-            self._client.chat.completions.create,
-            **kwargs,
-        )
-        return self._parse_chat_response(response)
+        return await self._call_chat_completions(kwargs, structured=False)
 
     async def _generate_structured(self, request: TextGenerationRequest) -> TextGenerationResult:
         messages = self._build_messages(request)
@@ -108,10 +118,14 @@ class ArkTextBackend:
             }
             if request.max_output_tokens is not None:
                 kwargs["max_tokens"] = request.max_output_tokens
-            logger.info("调用 %s 文本 SDK kwargs=%s", self.name, format_kwargs_for_log(kwargs))
+            from lib.text_backends.base import TextOutputTruncatedError
+
             try:
-                response = await asyncio.to_thread(self._client.chat.completions.create, **kwargs)
-                native = self._parse_chat_response(response)
+                native = await self._call_chat_completions(kwargs, structured=True)
+            except TextOutputTruncatedError:
+                # 截断是可操作硬错误，不是"原生通道不兼容"——降级到 Instructor 重发同一份
+                # 必然再截断的请求毫无意义，直接冒泡让调用方感知并换模型/调小规模。
+                raise
             except Exception as exc:
                 logger.warning("原生 response_format 调用或解析失败 (%s)，降级到 Instructor/json_object 路径", exc)
                 return await self._structured_fallback(request, messages)
@@ -138,8 +152,13 @@ class ArkTextBackend:
 
         return await self._structured_fallback(request, messages)
 
+    @with_retry_async()
     async def _structured_fallback(self, request: TextGenerationRequest, messages: list[dict]) -> TextGenerationResult:
-        """Instructor / json_object 降级路径。"""
+        """Instructor / json_object 降级路径。
+
+        instructor_fallback_sync 自身不做瞬态重试，这里补一层重试；范围仅覆盖降级自身，
+        失败不会重放已成功的原生调用。
+        """
         from lib.text_backends.instructor_support import instructor_fallback_sync
 
         return await asyncio.to_thread(
@@ -174,18 +193,19 @@ class ArkTextBackend:
 
         return messages
 
-    def _parse_chat_response(self, response) -> TextGenerationResult:
-        from lib.text_backends.base import warn_if_truncated
+    def _parse_chat_response(self, response, *, structured: bool) -> TextGenerationResult:
+        from lib.text_backends.base import check_truncation
 
         choice = response.choices[0]
         text = choice.message.content
         input_tokens = getattr(getattr(response, "usage", None), "prompt_tokens", None)
         output_tokens = getattr(getattr(response, "usage", None), "completion_tokens", None)
-        warn_if_truncated(
+        check_truncation(
             getattr(choice, "finish_reason", None),
             provider=PROVIDER_ARK,
             model=self._model,
             output_tokens=output_tokens,
+            structured=structured,
         )
         return TextGenerationResult(
             text=text.strip() if isinstance(text, str) else str(text),

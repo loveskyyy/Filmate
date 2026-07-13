@@ -113,6 +113,66 @@ describe("useProjectEventsSSE", () => {
     expect(useAppStore.getState().assistantToolActivitySuppressed).toBe(true);
   });
 
+  it("navigates reference video units to the reference canvas via reference_unit target", async () => {
+    let capturedOptions: ProjectEventStreamOptions | undefined;
+    vi.spyOn(API, "openProjectEventStream").mockImplementation((options) => {
+      capturedOptions = options;
+      return { close: vi.fn() } as unknown as EventSource;
+    });
+
+    renderHarness("/episodes/1");
+
+    act(() => {
+      capturedOptions?.onChanges?.(
+        {
+          project_name: "demo",
+          batch_id: "batch-ref",
+          fingerprint: "fp-ref",
+          generated_at: "2026-03-01T00:00:00Z",
+          source: "worker",
+          changes: [
+            {
+              entity_type: "reference_unit",
+              action: "created",
+              entity_id: "E1U01",
+              label: "视频单元「E1U01」",
+              episode: 1,
+              focus: {
+                pane: "episode",
+                episode: 1,
+                anchor_type: "reference_unit",
+                anchor_id: "E1U01",
+              },
+              important: true,
+            },
+          ],
+        },
+        new MessageEvent("changes"),
+      );
+    });
+
+    await waitFor(() => {
+      expect(API.getProject).toHaveBeenCalledWith("demo");
+      expect(useAppStore.getState().scrollTarget).toEqual(
+        expect.objectContaining({
+          type: "reference_unit",
+          id: "E1U01",
+          route: "/episodes/1",
+        }),
+      );
+    });
+    expect(useAppStore.getState().workspaceNotifications[0]).toEqual(
+      expect.objectContaining({
+        text: "AI 刚新增了 视频单元「E1U01」，点击查看",
+        target: expect.objectContaining({
+          type: "reference_unit",
+          id: "E1U01",
+          route: "/episodes/1",
+        }),
+      }),
+    );
+  });
+
   it("defers focus when the user is editing", async () => {
     let capturedOptions: ProjectEventStreamOptions | undefined;
     vi.spyOn(API, "openProjectEventStream").mockImplementation((options) => {
@@ -425,5 +485,79 @@ describe("useProjectEventsSSE", () => {
 
     // fingerprints 应立即（同步）写入 store，无需等待 getProject
     expect(useProjectsStore.getState().getAssetFingerprint("storyboards/scene_E1S01.png")).toBe(1710288000);
+  });
+
+  it("stops the reconnect loop after the project_deleted termination event", async () => {
+    let capturedOptions: ProjectEventStreamOptions | undefined;
+    const closeMock = vi.fn();
+    const openSpy = vi.spyOn(API, "openProjectEventStream").mockImplementation((options) => {
+      capturedOptions = options;
+      return { close: closeMock } as unknown as EventSource;
+    });
+
+    renderHarness("/");
+    expect(openSpy).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      capturedOptions?.onProjectDeleted?.(
+        { project_name: "demo" },
+        new MessageEvent("project_deleted"),
+      );
+    });
+    expect(closeMock).toHaveBeenCalledTimes(1);
+
+    vi.useFakeTimers();
+    try {
+      // 浏览器原生行为：流被服务端关闭后，EventSource 紧接着会触发一次 onerror；
+      // terminatedRef 应拦住它排的重连，即便等过了原本的 3s 重连延迟。
+      act(() => {
+        capturedOptions?.onError?.(new Event("error"));
+      });
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears an already-pending reconnect timer when the project_deleted event arrives", async () => {
+    let capturedOptions: ProjectEventStreamOptions | undefined;
+    const closeMock = vi.fn();
+    const openSpy = vi.spyOn(API, "openProjectEventStream").mockImplementation((options) => {
+      capturedOptions = options;
+      return { close: closeMock } as unknown as EventSource;
+    });
+
+    renderHarness("/");
+    expect(openSpy).toHaveBeenCalledTimes(1);
+
+    vi.useFakeTimers();
+    try {
+      // 先触发一次普通 onError，排入 3s 后的重连定时器。
+      act(() => {
+        capturedOptions?.onError?.(new Event("error"));
+      });
+
+      // 定时器排队期间收到终止事件：onProjectDeleted 应清掉这个待触发的重连定时器，
+      // 而不仅是处理之后新触发的 onError（见上一条用例）。
+      act(() => {
+        capturedOptions?.onProjectDeleted?.(
+          { project_name: "demo" },
+          new MessageEvent("project_deleted"),
+        );
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // 若定时器未被清除，会在 3s 时触发 connect() 导致 openSpy 被再次调用。
+    expect(openSpy).toHaveBeenCalledTimes(1);
   });
 });

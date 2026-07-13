@@ -5,12 +5,14 @@
 """
 
 import copy
+import errno
 import json
 import logging
 import os
 import re
 import secrets
 import shutil
+import time
 import unicodedata
 from collections.abc import Callable, Mapping
 from contextlib import contextmanager
@@ -24,6 +26,7 @@ from pydantic import BaseModel, Field
 from lib.agent_profile import agent_profile_dir
 from lib.asset_types import ASSET_SPECS, validate_asset_name
 from lib.episode_ledger import SOURCE_TEXT_SUFFIXES
+from lib.episode_paths import episode_script_relpath
 from lib.json_io import atomic_write_json, load_json, load_json_or_none
 from lib.profile_manifest import (
     VALID_CONTENT_MODES,
@@ -257,6 +260,30 @@ class ProjectManager:
             raise
 
         return project_dir
+
+    # 并发读者（如 ProjectEventService 的轮询扫描）触发的 _project_lock 可能在
+    # rmtree 清空目录内容之后、移除目录本身之前重新 touch 出锁文件：POSIX 上表现为
+    # rmdir 因目录非空失败（ENOTEMPTY），Windows 上锁文件仍被对端进程持有的文件锁
+    # 占用，表现为访问被拒（PermissionError / EACCES）。两者都是同一竞态的平台
+    # 特定症状，重试让锁文件在下一轮清理中一并删除。
+    _DELETE_RETRYABLE_ERRNOS = (errno.ENOTEMPTY, errno.EACCES)
+
+    def delete_project_directory(self, name: str) -> None:
+        """删除项目目录，容忍并发扫描与本次删除竞态产生的临时性错误。"""
+        project_dir = self.get_project_path(name)
+        attempts = 5
+        for attempt in range(attempts):
+            try:
+                shutil.rmtree(project_dir)
+                return
+            except FileNotFoundError:
+                # 目录已不存在——上一次重试已经成功,或并发的另一次删除已经完成,
+                # 删除目的已达成,无需继续重试或报错。
+                return
+            except OSError as exc:
+                if exc.errno not in self._DELETE_RETRYABLE_ERRNOS or attempt == attempts - 1:
+                    raise
+                time.sleep(0.05)
 
     def sync_agent_profile(
         self,
@@ -1509,7 +1536,7 @@ class ProjectManager:
             project.pop("video_model_settings", None)
 
     # 广告/短片项目恒单集：episodes 恒为第 1 集单条，剧本即第 1 集脚本文件
-    AD_SINGLE_EPISODE = {"episode": 1, "title": "", "script_file": "scripts/episode_1.json"}
+    AD_SINGLE_EPISODE = {"episode": 1, "title": "", "script_file": episode_script_relpath(1)}
     # 创建入口未传 target_duration 时的数据层兜底（与创建向导默认档位同值）
     AD_DEFAULT_TARGET_DURATION = 60
 

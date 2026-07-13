@@ -24,11 +24,46 @@ from lib.project_change_hints import (
     register_project_change_batch_listener,
     register_project_change_listener,
 )
-from lib.project_manager import ProjectManager
+from lib.project_manager import ProjectManager, effective_mode
+from lib.script_skeleton import SKELETONS, resolve_script_kind
+from server.sse_channel import IDLE, DropSubscriber, SseChannel
 
 logger = logging.getLogger(__name__)
 
 PROJECT_EVENTS_POLL_SECONDS = 0.5
+
+# 项目目录被删除后向订阅者广播的终止事件名——流在其后正常结束（见 stream_events._iter）。
+PROJECT_DELETED_EVENT = "project_deleted"
+
+
+# 条目名词按骨架种类硬编码——用于分镜级事件标签（如「镜头「E1S01」」）。名词 i18n 化是
+# 独立议题（与 ``_diff_named_entities`` 的「角色」/「线索」同为既有硬编码形态），不在此处收敛。
+_SKELETON_ITEM_NOUNS: dict[str, str] = {
+    "segments": "分镜",
+    "scenes": "场景",
+    "shots": "镜头",
+    "video_units": "视频单元",
+}
+
+# 分镜级事件的实体类型按骨架种类推导，与 ``_SKELETON_ITEM_NOUNS`` 同源。驱动前端分组标签映射
+# （``ENTITY_LABELS``），使四种骨架各显分镜/场景/镜头/视频单元，而非恒为「分镜」。取值与既有
+# ``entity_type`` 枚举不冲突（drama 用 ``drama_scene`` 避免与命名实体 ``scene`` 撞组）。
+_SKELETON_ENTITY_TYPES: dict[str, str] = {
+    "segments": "segment",
+    "scenes": "drama_scene",
+    "shots": "shot",
+    "video_units": "reference_unit",
+}
+
+# 分镜级事件的锚点类型按骨架种类推导，取值与前端各画布的滚动目标类型守卫对齐：video_units 归
+# ``reference_unit``（参考生视频画布按此选中并高亮对应视频单元），其余归 ``segment``
+# （narration/drama/ad 共用时间线镜头拆分视图，按 id 选中条目）。
+_SKELETON_ANCHOR_TYPES: dict[str, str] = {
+    "segments": "segment",
+    "scenes": "segment",
+    "shots": "segment",
+    "video_units": "reference_unit",
+}
 
 
 def _utc_now_iso() -> str:
@@ -45,7 +80,7 @@ def _fingerprint(value: Any) -> str:
 
 @dataclass
 class _ProjectChannel:
-    subscribers: set[asyncio.Queue] = field(default_factory=set)
+    sse: SseChannel
     ready_event: asyncio.Event = field(default_factory=asyncio.Event)
     scan_now: asyncio.Event = field(default_factory=asyncio.Event)
     pending_sources: set[ProjectChangeSource] = field(default_factory=set)
@@ -103,7 +138,56 @@ class ProjectEventService:
         self._channels.clear()
         self._loop = None
 
-    async def _subscribe(self, project_name: str) -> tuple[asyncio.Queue, dict[str, Any]]:
+    def _create_channel(self, project_name: str) -> _ProjectChannel:
+        """构造项目通道：溢出策略「移除订阅者」，首/末订阅者钩子启停后台扫描。"""
+        sse = SseChannel(
+            overflow=DropSubscriber(
+                on_removed=lambda count: logger.warning(
+                    "项目事件订阅队列溢出，移除 %s 个订阅者 project=%s",
+                    count,
+                    project_name,
+                ),
+            ),
+            on_first_subscriber=lambda: self._start_watch(project_name),
+            on_last_subscriber=lambda: self._stop_watch(project_name),
+        )
+        return _ProjectChannel(sse=sse)
+
+    def _start_watch(self, project_name: str) -> None:
+        """首订阅者钩子：启动（或重启已自行退出的）后台扫描任务。
+
+        溢出移除掉最后一个订阅者时 watch task 经 ``while has_subscribers`` 自行
+        退出而通道仍留在注册表，故重启条件是「任务不在跑」而非仅「首次订阅」。
+        """
+        channel = self._channels.get(project_name)
+        if channel is None:
+            return
+        if channel.task is not None and not channel.task.done():
+            return
+        channel.ready_event = asyncio.Event()
+        channel.scan_now = asyncio.Event()
+        channel.pending_sources.clear()
+        channel.task = asyncio.create_task(
+            self._watch_project(project_name, channel),
+            name=f"project-events-{project_name}",
+        )
+
+    async def _stop_watch(self, project_name: str) -> None:
+        """末订阅者钩子：停止后台扫描任务并注销通道。
+
+        先从注册表摘除通道再 await watch task 退出——摘除与取回之间无让出点，
+        摘的正是当前通道。收尾期间让出事件循环时，并发进入的新订阅者取不到这个
+        将死通道，会新建独立通道注册入表，不会被本次收尾的删除连带摘掉。
+        """
+        channel = self._channels.pop(project_name, None)
+        if channel is None:
+            return
+        task = channel.task
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    async def _subscribe(self, project_name: str) -> tuple[SseChannel, asyncio.Queue, dict[str, Any]]:
         """Register a queue for *project_name* and return it with the initial snapshot.
 
         Private: the only consumer is :meth:`stream_events`, which owns the
@@ -112,48 +196,32 @@ class ProjectEventService:
         await asyncio.to_thread(self.pm.get_project_path, project_name)
         channel = self._channels.get(project_name)
         if channel is None:
-            channel = _ProjectChannel()
+            channel = self._create_channel(project_name)
             self._channels[project_name] = channel
 
-        queue: asyncio.Queue = asyncio.Queue(maxsize=100)
-        # 队列必须在首次扫描前注册,否则会漏掉扫描完成到注册之间广播的事件。
-        channel.subscribers.add(queue)
-
-        if channel.task is None or channel.task.done():
-            channel.ready_event = asyncio.Event()
-            channel.scan_now = asyncio.Event()
-            channel.pending_sources.clear()
-            channel.task = asyncio.create_task(
-                self._watch_project(project_name, channel),
-                name=f"project-events-{project_name}",
-            )
+        # 队列在首次扫描启动前注册(首订阅者钩子在注册后触发)，否则会漏掉
+        # 扫描完成到注册之间广播的事件。
+        queue = channel.sse.subscribe()
 
         try:
             await channel.ready_event.wait()
         except BaseException:
             # 客户端在首次扫描期间断开会取消这里:此时 _subscribe 尚未返回 queue,
             # stream_events 的 try/finally 进不去。同步清理掉刚注册的订阅者(空闲项目
-            # 下 watch task 不会自愈),不 await 以免取消重入。
-            channel.subscribers.discard(queue)
-            if not channel.subscribers and channel.task is not None:
+            # 下 watch task 不会自愈),不 await 以免取消重入——绕过异步末位钩子，
+            # 收尾自理。
+            if channel.sse.unsubscribe_nowait(queue) and channel.task is not None:
                 channel.task.cancel()
                 self._channels.pop(project_name, None)
             raise
-        return queue, self._build_snapshot_payload(project_name, channel)
+        return channel.sse, queue, self._build_snapshot_payload(project_name, channel)
 
     async def _unsubscribe(self, project_name: str, queue: asyncio.Queue) -> None:
-        """Remove a queue; stop the watch task once the last subscriber leaves."""
+        """Remove a queue; the last-subscriber hook stops the watch task."""
         channel = self._channels.get(project_name)
         if channel is None:
             return
-        channel.subscribers.discard(queue)
-        if channel.subscribers:
-            return
-        task = channel.task
-        if task is not None:
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
-        self._channels.pop(project_name, None)
+        await channel.sse.unsubscribe(queue)
 
     @contextlib.asynccontextmanager
     async def stream_events(
@@ -169,23 +237,22 @@ class ProjectEventService:
           event (consumers poll disconnect on it).
 
         The "queue full → silently drop subscriber" overflow semantics are
-        unchanged (no ``_queue_overflow`` sentinel). Subscription and unsubscribe
-        live behind this seam; cleanup is carried by ``__aexit__`` (see ADR-0005).
-        Consume as ``async with stream_events(...) as stream: async for item in stream``.
+        unchanged (:class:`DropSubscriber` — no overflow signal, the stream keeps
+        idling). Subscription and unsubscribe live behind this seam; cleanup is
+        carried by ``__aexit__`` (see ADR-0005). Consume as
+        ``async with stream_events(...) as stream: async for item in stream``.
         """
-        queue, snapshot = await self._subscribe(project_name)
+        sse, queue, snapshot = await self._subscribe(project_name)
 
         async def _iter() -> AsyncIterator[tuple[str, Any] | dict[str, Any]]:
             # NOTE: intentionally NO ``finally: _unsubscribe`` here — cleanup is owned
             # by the enclosing context manager's __aexit__ (ADR-0005). Do not add one.
             yield ("snapshot", snapshot)
-            while True:
-                try:
-                    item = await asyncio.wait_for(queue.get(), timeout=idle_timeout)
-                except TimeoutError:
-                    yield {"type": "_idle"}
-                    continue
-                yield item
+            async for item in sse.iterate(queue, idle_timeout=idle_timeout):
+                yield {"type": "_idle"} if item is IDLE else item
+                # 项目已被删除：终止事件之后流正常结束，不再等待下一条广播或空闲心跳。
+                if isinstance(item, tuple) and item[0] == PROJECT_DELETED_EVENT:
+                    return
 
         try:
             yield _iter()
@@ -272,6 +339,11 @@ class ProjectEventService:
         """文件 I/O 在线程中执行，状态更新和广播在事件循环线程中执行。"""
         try:
             snapshot, fingerprint = await asyncio.to_thread(self._rebuild_snapshot, project_name)
+        except FileNotFoundError:
+            await self._handle_scan_file_not_found(
+                project_name, channel, log_message="构建显式项目事件快照失败 project=%s"
+            )
+            return
         except Exception:
             logger.exception("构建显式项目事件快照失败 project=%s", project_name)
             return
@@ -289,7 +361,7 @@ class ProjectEventService:
             "source": source,
             "changes": [dict(change) for change in changes],
         }
-        self._broadcast(project_name, channel, "changes", payload)
+        channel.sse.broadcast(("changes", payload))
 
     def _rebuild_snapshot(self, project_name: str) -> tuple[dict[str, Any], str]:
         """同步方法（在线程池中执行）：重建快照并返回 (snapshot, fingerprint)。"""
@@ -297,9 +369,56 @@ class ProjectEventService:
         snapshot = self._build_snapshot(project_name)
         return snapshot, _fingerprint(snapshot)
 
+    def _project_directory_gone(self, project_name: str) -> bool:
+        """判定项目目录当前是否确已不存在（``get_project_path`` 语义）。
+
+        供扫描 / hint 重建路径捕获 ``FileNotFoundError`` 后做一次独立的现状复核，
+        与「project.json 等深层文件缺失但目录仍在」区分——后者维持现状，按通用
+        异常兜底记 ERROR，不触发终止流程。用复核而非扫描起点的一次性判断，是因为
+        目录删除（如 ``shutil.rmtree``）本身非原子：扫描可能在删除过程中的任意
+        中间状态命中 ``FileNotFoundError``（如 project.json 先于目录本身被移除），
+        起点检查会误判为「未删除」；复核反映的是异常发生后的当前实况。
+        """
+        try:
+            self.pm.get_project_path(project_name)
+        except FileNotFoundError:
+            return True
+        return False
+
+    def _handle_project_deleted(self, project_name: str, channel: _ProjectChannel) -> None:
+        """项目目录已被删除：终止该通道——广播终止事件、移出注册表、取消 watch task。
+
+        轮询扫描与 hint 重建两条路径都可能独立探测到同一次删除并落到本方法；
+        按「本通道是否仍是注册表现行通道」判定是否为首次终止，避免重复广播/
+        重复日志，也避免误杀同名项目重建后已注册的新通道。
+        """
+        if self._channels.get(project_name) is not channel:
+            return
+        self._channels.pop(project_name, None)
+        channel.sse.broadcast((PROJECT_DELETED_EVENT, {"project_name": project_name}))
+        logger.info("项目已被删除，终止事件流 project=%s", project_name)
+        task = channel.task
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+
+    async def _handle_scan_file_not_found(
+        self, project_name: str, channel: _ProjectChannel, *, log_message: str
+    ) -> bool:
+        """扫描 / hint 重建路径捕获 ``FileNotFoundError`` 后的统一处理：复核目录是否确已
+        消失，是则终止通道并返回 ``True``；否则维持现状按 ERROR 兜底并返回 ``False``。
+
+        供 :meth:`_async_rebuild_and_broadcast` 与 :meth:`_watch_project` 两条独立路径
+        共用，避免各自维护一份相同判定逻辑、日后修改判定条件时漏改其中一处。
+        """
+        if await asyncio.to_thread(self._project_directory_gone, project_name):
+            self._handle_project_deleted(project_name, channel)
+            return True
+        logger.exception(log_message, project_name)
+        return False
+
     async def _watch_project(self, project_name: str, channel: _ProjectChannel) -> None:
         try:
-            while channel.subscribers:
+            while channel.sse.has_subscribers:
                 try:
                     # 仅文件 I/O 在线程中执行
                     snapshot, fingerprint = await asyncio.to_thread(self._rebuild_snapshot, project_name)
@@ -307,6 +426,11 @@ class ProjectEventService:
                     self._apply_scan_result(project_name, channel, snapshot, fingerprint)
                 except asyncio.CancelledError:
                     raise
+                except FileNotFoundError:
+                    if await self._handle_scan_file_not_found(
+                        project_name, channel, log_message="项目事件扫描失败 project=%s"
+                    ):
+                        return
                 except Exception:
                     logger.exception("项目事件扫描失败 project=%s", project_name)
                 finally:
@@ -355,7 +479,7 @@ class ProjectEventService:
             "source": source,
             "changes": changes,
         }
-        self._broadcast(project_name, channel, "changes", payload)
+        channel.sse.broadcast(("changes", payload))
 
     def _build_snapshot_payload(
         self,
@@ -378,28 +502,6 @@ class ProjectEventService:
             return "webui"
         return "filesystem"
 
-    def _broadcast(
-        self,
-        project_name: str,
-        channel: _ProjectChannel,
-        event: str,
-        payload: dict[str, Any],
-    ) -> None:
-        stale: list[asyncio.Queue] = []
-        for subscriber in channel.subscribers:
-            try:
-                subscriber.put_nowait((event, payload))
-            except asyncio.QueueFull:
-                stale.append(subscriber)
-        for subscriber in stale:
-            channel.subscribers.discard(subscriber)
-        if stale:
-            logger.warning(
-                "项目事件订阅队列溢出，移除 %s 个订阅者 project=%s",
-                len(stale),
-                project_name,
-            )
-
     def _ensure_script_index_synced(self, project_name: str) -> None:
         project_path = self.pm.get_project_path(project_name)
         scripts_dir = project_path / "scripts"
@@ -408,7 +510,7 @@ class ProjectEventService:
 
         project = self.pm.load_project(project_name)
         current_episodes: dict[int, dict[str, str]] = {}
-        for ep in project.get("episodes", []):
+        for ep in project.get("episodes") or []:
             if not isinstance(ep, dict):
                 continue
             episode_num = ep.get("episode")
@@ -511,11 +613,20 @@ class ProjectEventService:
             for ep in sorted(
                 [
                     ep
-                    for ep in project.get("episodes", [])
+                    for ep in project.get("episodes") or []
                     if isinstance(ep, dict) and isinstance(ep.get("episode"), int)
                 ],
                 key=lambda value: value["episode"],
             )
+        }
+
+        # 集级 generation_mode 解析（episode → project → 默认 storyboard，见 ``effective_mode``）：
+        # ad+参考路径的成片挂在派生索引 ``reference_units`` 而非内容骨架 ``shots``，快照需按项目
+        # 声明的生成路径分派才能读到该产物——与 ``StatusCalculator`` / 剪映导出同口径，不嗅探数据形状。
+        episodes_by_file = {
+            ep["script_file"]: ep
+            for ep in project.get("episodes") or []
+            if isinstance(ep, dict) and isinstance(ep.get("script_file"), str)
         }
 
         scripts: dict[str, Any] = {}
@@ -526,7 +637,9 @@ class ProjectEventService:
                 except Exception:
                     logger.warning("跳过无法解析的剧本快照 project=%s file=%s", project_name, script_path.name)
                     continue
-                scripts[script_path.name] = self._normalize_script_snapshot(script)
+                episode = episodes_by_file.get(f"scripts/{script_path.name}", {})
+                generation_mode = effective_mode(project=project, episode=episode)
+                scripts[script_path.name] = self._normalize_script_snapshot(script, generation_mode=generation_mode)
 
         return {
             "project": {
@@ -540,30 +653,42 @@ class ProjectEventService:
             "scripts": scripts,
         }
 
-    def _normalize_script_snapshot(self, script: dict[str, Any]) -> dict[str, Any]:
+    def _normalize_script_snapshot(
+        self, script: dict[str, Any], *, generation_mode: str | None = None
+    ) -> dict[str, Any]:
+        # 取证解析：由剧本数据形状判别骨架种类（narration/drama 走 reference 时 content_mode 仍是
+        # narration/drama，二值兜底会把 ad 的 shots 与 reference 的 video_units 全部漏读——差分恒空、
+        # 分镜级事件从不发出，正是本次修复的 bug 根因）。键即条目数组键。
         content_mode = str(script.get("content_mode") or "narration")
-        raw_items = script.get("segments" if content_mode == "narration" else "scenes", [])
+        kind = resolve_script_kind(script)
+        skeleton = SKELETONS[kind]
+        raw_items = script.get(kind, [])
         if not isinstance(raw_items, list):
+            logger.warning(
+                "剧本条目字段非列表，按空快照处理 kind=%s type=%s",
+                kind,
+                type(raw_items).__name__,
+            )
             raw_items = []
-        id_field = "segment_id" if content_mode == "narration" else "scene_id"
-        chars_field = "characters_in_segment" if content_mode == "narration" else "characters_in_scene"
 
         items: dict[str, Any] = {}
         for item in raw_items:
             if not isinstance(item, dict):
                 continue
-            item_id = str(item.get(id_field) or "")
+            item_id = str(item.get(skeleton.id_field) or "")
             if not item_id:
                 continue
             assets = item.get("generated_assets")
             if not isinstance(assets, dict):
                 assets = {}
+            characters, scenes, props = self._item_entities(item, skeleton.chars_field)
             items[item_id] = {
                 "duration_seconds": item.get("duration_seconds"),
                 "segment_break": bool(item.get("segment_break")),
-                "characters": sorted(str(name) for name in item.get(chars_field, []) or []),
-                "scenes": sorted(str(name) for name in item.get("scenes", []) or []),
-                "props": sorted(str(name) for name in item.get("props", []) or []),
+                "characters": characters,
+                "scenes": scenes,
+                "props": props,
+                "shots": self._item_member_shots(item.get("shots")),
                 "image_prompt": item.get("image_prompt"),
                 "video_prompt": item.get("video_prompt"),
                 "generated_assets": {
@@ -578,8 +703,89 @@ class ProjectEventService:
             "episode": script.get("episode"),
             "title": str(script.get("title") or ""),
             "content_mode": content_mode,
+            "kind": kind,
             "items": items,
+            "reference_units": self._reference_unit_assets(script, kind=kind, generation_mode=generation_mode),
         }
+
+    @staticmethod
+    def _reference_unit_assets(
+        script: dict[str, Any],
+        *,
+        kind: str,
+        generation_mode: str | None,
+    ) -> dict[str, dict[str, str]]:
+        """ad+参考路径下按 ``unit_id`` 记录派生索引 ``reference_units`` 的 ``video_clip``。
+
+        组合按项目声明的 ``generation_mode`` 分派（``kind == "shots"`` 即 ad 骨架，配
+        ``generation_mode == "reference_video"``），与 ``StatusCalculator`` 同口径、不嗅探数据
+        形状——storyboard 路径的残留索引不进快照，不参与差分。仅记 ``video_clip``：成片就绪的
+        唯一信号；unit 的增删/成员变化是 shots 编辑的派生回声，内容变更由 shots 差分承载。
+        """
+        if not (kind == "shots" and generation_mode == "reference_video"):
+            return {}
+        raw_units = script.get("reference_units")
+        if not isinstance(raw_units, list):
+            return {}
+        units: dict[str, dict[str, str]] = {}
+        for unit in raw_units:
+            if not isinstance(unit, dict):
+                continue
+            unit_id = str(unit.get("unit_id") or "")
+            if not unit_id:
+                continue
+            assets = unit.get("generated_assets")
+            if not isinstance(assets, dict):
+                assets = {}
+            units[unit_id] = {"video_clip": str(assets.get("video_clip") or "")}
+        return units
+
+    @staticmethod
+    def _item_entities(item: dict[str, Any], chars_field: str | None) -> tuple[list[str], list[str], list[str]]:
+        """条目出场的 (角色, 场景, 道具) 名单（各自排序、去重）。
+
+        ``chars_field`` 非 ``None`` 时角色读逐条字段、场景/道具读顶层 ``scenes`` / ``props``；为
+        ``None``（video_units 无逐条实体字段的显式缺位，见 ``SKELETONS``）时三者均从条目
+        ``references`` 按 ``type == character/scene/prop`` 派生（与 ``status_calculator`` 同规则，
+        使 video_unit 的场景/道具引用编辑也能进入差分）。
+        """
+        if chars_field is not None:
+            chars_raw = item.get(chars_field)
+            scenes_raw = item.get("scenes")
+            props_raw = item.get("props")
+            characters = sorted({str(name) for name in chars_raw}) if isinstance(chars_raw, list) else []
+            scenes = sorted({str(name) for name in scenes_raw}) if isinstance(scenes_raw, list) else []
+            props = sorted({str(name) for name in props_raw}) if isinstance(props_raw, list) else []
+            return characters, scenes, props
+        buckets: dict[str, set[str]] = {"character": set(), "scene": set(), "prop": set()}
+        references = item.get("references")
+        if isinstance(references, list):
+            for ref in references:
+                if not isinstance(ref, dict):
+                    continue
+                name = ref.get("name")
+                if not name:
+                    continue
+                ref_type = ref.get("type")
+                target = buckets.get(ref_type) if isinstance(ref_type, str) else None
+                if target is not None:
+                    target.add(str(name))
+        return sorted(buckets["character"]), sorted(buckets["scene"]), sorted(buckets["prop"])
+
+    @staticmethod
+    def _item_member_shots(shots: Any) -> list[dict[str, Any]]:
+        """video_units 成员镜头的内容体（``text`` / ``duration``），供 ``updated`` 差分捕获镜头
+        文本或时长编辑——这些内容不落在 ``characters`` / ``duration_seconds`` 上，不纳入则单元
+        内容改动无事件。storyboard 骨架（segments/scenes/shots）条目无成员镜头子列表，返回空列表。
+        """
+        if not isinstance(shots, list):
+            return []
+        normalized: list[dict[str, Any]] = []
+        for shot in shots:
+            if not isinstance(shot, dict):
+                continue
+            normalized.append({"text": str(shot.get("text") or ""), "duration": shot.get("duration")})
+        return normalized
 
     def _diff_snapshots(
         self,
@@ -774,6 +980,7 @@ class ProjectEventService:
                         important=False,
                     )
                 )
+            entity_type = self._script_item_entity_type(current_meta)
             for item_id in sorted(set(previous_items) & set(current_items)):
                 previous_item = previous_items[item_id]
                 current_item = current_items[item_id]
@@ -785,7 +992,7 @@ class ProjectEventService:
                 ):
                     changes.append(
                         self._build_entity_change(
-                            entity_type="segment",
+                            entity_type=entity_type,
                             action="storyboard_ready",
                             entity_id=item_id,
                             label=label,
@@ -801,7 +1008,7 @@ class ProjectEventService:
                 ):
                     changes.append(
                         self._build_entity_change(
-                            entity_type="segment",
+                            entity_type=entity_type,
                             action="video_ready",
                             entity_id=item_id,
                             label=label,
@@ -817,7 +1024,7 @@ class ProjectEventService:
                 if previous_body != current_body:
                     changes.append(
                         self._build_entity_change(
-                            entity_type="segment",
+                            entity_type=entity_type,
                             action="updated",
                             entity_id=item_id,
                             label=label,
@@ -827,7 +1034,64 @@ class ProjectEventService:
                             important=True,
                         )
                     )
+            changes.extend(
+                self._diff_reference_units(
+                    previous_meta.get("reference_units", {}),
+                    current_meta.get("reference_units", {}),
+                    script_file=script_file,
+                    episode=current_meta.get("episode"),
+                )
+            )
         return changes
+
+    def _diff_reference_units(
+        self,
+        previous_units: dict[str, Any],
+        current_units: dict[str, Any],
+        *,
+        script_file: str,
+        episode: Any,
+    ) -> list[dict[str, Any]]:
+        """ad+参考路径的 unit 级成片就绪差分（``video_clip`` 空→非空，每 unit 一条 video_ready）。
+
+        仅比对两侧共有的 unit：unit 的增删是 shots 编辑的派生回声，内容变更由 shots 差分承载，
+        此处不发。实体类型/名词/锚点复用 ``video_units`` 骨架条目（reference_unit /「视频单元」/
+        参考画布锚点），不新造平行枚举——前端据锚点切到 units tab 并选中对应单元。
+        """
+        # 快照仅在 ad+参考组合成立时填充 ``reference_units``，storyboard 路径恒为空 → 无差分。
+        unit_meta = {"kind": "video_units", "episode": episode}
+        changes: list[dict[str, Any]] = []
+        for unit_id in sorted(set(previous_units) & set(current_units)):
+            if self._became_truthy(
+                previous_units[unit_id].get("video_clip"),
+                current_units[unit_id].get("video_clip"),
+            ):
+                changes.append(
+                    self._build_entity_change(
+                        entity_type=self._script_item_entity_type(unit_meta),
+                        action="video_ready",
+                        entity_id=unit_id,
+                        label=self._build_script_item_label(unit_id, unit_meta),
+                        script_file=script_file,
+                        episode=episode if isinstance(episode, int) else None,
+                        focus=self._build_script_item_focus(unit_id, unit_meta),
+                        important=True,
+                    )
+                )
+        return changes
+
+    @staticmethod
+    def _script_kind(script_meta: dict[str, Any]) -> str:
+        # 单一读取点，让名词/实体类型/锚点类型三者按同一 kind 归一，回退口径不会分叉。
+        return str(script_meta.get("kind") or "segments")
+
+    @staticmethod
+    def _script_item_entity_type(script_meta: dict[str, Any]) -> str:
+        return _SKELETON_ENTITY_TYPES.get(ProjectEventService._script_kind(script_meta), "segment")
+
+    @staticmethod
+    def _script_item_anchor_type(script_meta: dict[str, Any]) -> str:
+        return _SKELETON_ANCHOR_TYPES.get(ProjectEventService._script_kind(script_meta), "segment")
 
     @staticmethod
     def _build_script_item_focus(
@@ -837,14 +1101,13 @@ class ProjectEventService:
         return {
             "pane": "episode",
             "episode": script_meta.get("episode"),
-            "anchor_type": "segment",
+            "anchor_type": ProjectEventService._script_item_anchor_type(script_meta),
             "anchor_id": item_id,
         }
 
     @staticmethod
     def _build_script_item_label(item_id: str, script_meta: dict[str, Any]) -> str:
-        content_mode = str(script_meta.get("content_mode") or "narration")
-        noun = "分镜" if content_mode == "narration" else "场景"
+        noun = _SKELETON_ITEM_NOUNS.get(ProjectEventService._script_kind(script_meta), "分镜")
         return f"{noun}「{item_id}」"
 
     def _build_script_item_change(
@@ -858,7 +1121,7 @@ class ProjectEventService:
     ) -> dict[str, Any]:
         focus = self._build_script_item_focus(item_id, script_meta) if action != "deleted" else None
         return self._build_entity_change(
-            entity_type="segment",
+            entity_type=self._script_item_entity_type(script_meta),
             action=action,
             entity_id=item_id,
             label=self._build_script_item_label(item_id, script_meta),

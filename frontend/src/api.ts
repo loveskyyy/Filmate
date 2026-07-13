@@ -16,11 +16,13 @@ import type {
   TaskItem,
   TaskStats,
   SessionMeta,
-  AssistantSnapshot,
+  EntriesResponse,
+  TimelineEntry,
   SkillInfo,
   ProjectOverview,
   ProjectChangeBatchPayload,
   ProjectEventSnapshotPayload,
+  ProjectDeletedPayload,
   GetSystemConfigResponse,
   GetSystemVersionResponse,
   SystemConfigPatch,
@@ -149,6 +151,8 @@ export interface ProjectEventStreamOptions {
   projectName: string;
   onSnapshot?: (payload: ProjectEventSnapshotPayload, event: MessageEvent) => void;
   onChanges?: (payload: ProjectChangeBatchPayload, event: MessageEvent) => void;
+  /** 项目目录被删除后收到一次，随后流正常结束（浏览器会紧接着触发一次 onError）。 */
+  onProjectDeleted?: (payload: ProjectDeletedPayload, event: MessageEvent) => void;
   onError?: (event: Event) => void;
 }
 
@@ -1484,6 +1488,7 @@ class API {
 
     source.addEventListener("snapshot", createHandler(options.onSnapshot));
     source.addEventListener("changes", createHandler(options.onChanges));
+    source.addEventListener("project_deleted", createHandler(options.onProjectDeleted));
 
     source.onerror = (event: Event) => {
       if (typeof options.onError === "function") {
@@ -1599,12 +1604,15 @@ class API {
     );
   }
 
-  static async getAssistantSnapshot(
+  /** 冷读会话事件日志（after 为 seq 游标，-1 表示从头）。 */
+  static async listAssistantEntries(
     projectName: string,
-    sessionId: string
-  ): Promise<AssistantSnapshot> {
+    sessionId: string,
+    after: number = -1
+  ): Promise<EntriesResponse> {
+    const query = after >= 0 ? `?after=${after}` : "";
     return this.request(
-      `${this.assistantBase(projectName)}/sessions/${encodeURIComponent(sessionId)}/snapshot`
+      `${this.assistantBase(projectName)}/sessions/${encodeURIComponent(sessionId)}/entries${query}`
     );
   }
 
@@ -1612,14 +1620,16 @@ class API {
     projectName: string,
     content: string,
     sessionId?: string | null,
-    images?: Array<{ data: string; media_type: string }>
-  ): Promise<{ session_id: string; status: string }> {
+    images?: Array<{ data: string; media_type: string }>,
+    clientKey?: string
+  ): Promise<{ session_id: string; status: string; entry: TimelineEntry | null }> {
     return this.request(`${this.assistantBase(projectName)}/sessions/send`, {
       method: "POST",
       body: JSON.stringify({
         content,
         session_id: sessionId || undefined,
         images: images || [],
+        client_key: clientKey || undefined,
       }),
     });
   }
@@ -1651,8 +1661,15 @@ class API {
     );
   }
 
-  static getAssistantStreamUrl(projectName: string, sessionId: string): string {
-    return withAuthQuery(`${API_BASE}${this.assistantBase(projectName)}/sessions/${encodeURIComponent(sessionId)}/stream`);
+  /** entry 流 SSE URL（after 为 seq 游标；重连续传由 EventSource Last-Event-ID 承担）。 */
+  static getAssistantEntriesStreamUrl(
+    projectName: string,
+    sessionId: string,
+    after: number = -1
+  ): string {
+    const base = `${API_BASE}${this.assistantBase(projectName)}/sessions/${encodeURIComponent(sessionId)}/entries/stream`;
+    const url = after >= 0 ? `${base}?after=${after}` : base;
+    return withAuthQuery(url);
   }
 
   static async listAssistantSkills(
