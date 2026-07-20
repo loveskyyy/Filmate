@@ -64,7 +64,7 @@ def _client(monkeypatch, tmp_path):
     monkeypatch.setattr(generation_tasks, "get_project_manager", lambda: pm)
 
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(shot_uploads.router, prefix="/api/v1")
     return TestClient(app), pm
 
@@ -358,7 +358,7 @@ def _ref_client(monkeypatch, tmp_path):
     monkeypatch.setattr(reference_video_tasks, "extract_video_thumbnail", _fake_thumbnail)
 
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(reference_videos.router, prefix="/api/v1")
     return TestClient(app), pm
 

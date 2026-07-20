@@ -86,15 +86,27 @@ class TestUserModel:
             columns = await conn.run_sync(
                 lambda sync_conn: {c["name"] for c in inspect(sync_conn).get_columns("users")}
             )
-        assert columns == {"id", "username", "role", "is_active", "created_at", "updated_at"}
+        assert columns == {
+            "id",
+            "username",
+            "email",
+            "hashed_password",
+            "role",
+            "is_active",
+            "credits",
+            "created_at",
+            "updated_at",
+        }
 
     async def test_user_round_trip(self, session):
-        user = User(id="u1", username="alice")
+        user = User(username="alice")
         session.add(user)
         await session.commit()
+        await session.refresh(user)
 
-        result = await session.execute(select(User).where(User.id == "u1"))
+        result = await session.execute(select(User).where(User.id == user.id))
         loaded = result.scalar_one()
+        assert isinstance(loaded.id, int)
         assert loaded.username == "alice"
         assert loaded.role == "user"  # server_default
         assert loaded.created_at is not None
@@ -116,10 +128,10 @@ class TestTimestampMixin:
 
 class TestUserOwnedMixin:
     def test_user_owned_mixin_server_default(self):
-        """Verify UserOwnedMixin has server_default='default'."""
+        """Verify UserOwnedMixin has server_default='1'."""
         col = UserOwnedMixin.__dict__["user_id"].column
         assert col.server_default is not None
-        assert col.server_default.arg == "default"
+        assert col.server_default.arg == "1"
 
 
 class TestMixinApplicationToModels:

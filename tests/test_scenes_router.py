@@ -41,7 +41,7 @@ class _FakePM:
 def _client(monkeypatch, fake_pm):
     monkeypatch.setattr(scenes, "get_project_manager", lambda: fake_pm)
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(scenes.router, prefix="/api/v1")
     return TestClient(app)
 
@@ -105,7 +105,7 @@ class TestScenesRouterDoesNotCollideWithProjects:
         monkeypatch.setattr(projects_router, "get_project_manager", lambda: fake_pm)
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         # 与 server/app.py 同序：projects 先 include
         app.include_router(projects_router.router, prefix="/api/v1")
         app.include_router(scenes.router, prefix="/api/v1")

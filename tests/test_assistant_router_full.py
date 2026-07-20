@@ -57,7 +57,7 @@ class _FakeService:
         return [{"name": "skill-a"}]
 
 
-_FAKE_USER = CurrentUserInfo(id="default", sub="testuser", role="admin")
+_FAKE_USER = CurrentUserInfo(id=1, sub="testuser", role="admin")
 
 
 def _client(monkeypatch):

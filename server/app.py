@@ -671,4 +671,12 @@ if __name__ == "__main__":
     import uvicorn
 
     _host, _port = _resolve_listen_addr()
-    uvicorn.run(app, host=_host, port=_port, reload=True)
+    reload_enabled = os.getenv("UVICORN_RELOAD", "false").lower() == "true"
+
+    uvicorn.run(
+        "server.app:app" if reload_enabled else app,
+        host=_host,
+        port=_port,
+        reload=reload_enabled,
+        reload_dirs=["server", "lib"] if reload_enabled else None,
+    )

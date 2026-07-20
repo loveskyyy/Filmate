@@ -50,7 +50,7 @@ def app(session_factory) -> FastAPI:
             yield session
 
     _app.dependency_overrides[get_async_session] = _override_session
-    _app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="test", sub="test", role="admin")
+    _app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="test", role="admin")
     _app.include_router(custom_providers.router, prefix="/api/v1")
     return _app
 

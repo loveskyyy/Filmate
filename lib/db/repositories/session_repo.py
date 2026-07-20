@@ -27,7 +27,7 @@ def _row_to_dict(row: AgentSession) -> dict[str, Any]:
 
 class SessionRepository(BaseRepository):
     async def create(
-        self, project_name: str, sdk_session_id: str, title: str = "", user_id: str = DEFAULT_USER_ID
+        self, project_name: str, sdk_session_id: str, title: str = "", user_id: int = DEFAULT_USER_ID
     ) -> dict[str, Any]:
         now = utc_now()
         row = AgentSession(

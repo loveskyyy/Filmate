@@ -52,7 +52,7 @@ def _client(monkeypatch, tmp_path):
     monkeypatch.setattr("lib.text_generator.create_text_backend_for_task", _fake_create_backend)
 
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(files.router, prefix="/api/v1")
     return TestClient(app), pm
 
@@ -844,7 +844,7 @@ def _client_with_pm_raising(monkeypatch, sentinel: str):
     monkeypatch.setattr(files, "get_project_manager", _raise)
 
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(files.router, prefix="/api/v1")
     return TestClient(app)
 

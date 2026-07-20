@@ -20,7 +20,7 @@ down_revision: str | Sequence[str] | None = "4c643f3ff5b9"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-DEFAULT_USER_ID = "default"
+DEFAULT_USER_ID = 1
 _LEGACY_KEYS = (
     "anthropic_api_key",
     "anthropic_base_url",
@@ -36,7 +36,7 @@ def upgrade() -> None:
     op.create_table(
         "agent_anthropic_credentials",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("user_id", sa.String(length=64), nullable=False, server_default=DEFAULT_USER_ID),
+        sa.Column("user_id", sa.Integer(), nullable=False, server_default=str(DEFAULT_USER_ID)),
         sa.Column("preset_id", sa.String(length=64), nullable=False),
         sa.Column("display_name", sa.String(length=128), nullable=False),
         sa.Column("base_url", sa.Text(), nullable=False),

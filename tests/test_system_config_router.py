@@ -51,7 +51,7 @@ def _make_app_with_mock(mock_svc: ConfigService) -> FastAPI:
         yield
 
     app = FastAPI(lifespan=_lifespan)
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.dependency_overrides[get_config_service] = lambda: mock_svc
 
     async def _override_session():
@@ -272,7 +272,7 @@ class TestPatchSystemConfig:
     def _make_patch_app(self, mock_svc: ConfigService) -> FastAPI:
         """App for PATCH tests - needs session override for commit()."""
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.dependency_overrides[get_config_service] = lambda: mock_svc
 
         mock_session = AsyncMock()

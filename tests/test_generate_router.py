@@ -117,7 +117,7 @@ def _client(monkeypatch, fake_pm, fake_queue):
     monkeypatch.setattr(generate, "get_generation_queue", lambda: fake_queue)
 
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(generate.router, prefix="/api/v1")
     return TestClient(app)
 
@@ -436,7 +436,7 @@ class TestUnexpectedErrorMapsTo500:
 
         monkeypatch.setattr(generate, "get_project_manager", _boom)
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.include_router(generate.router, prefix="/api/v1")
         return TestClient(app)
 

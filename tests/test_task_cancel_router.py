@@ -66,7 +66,7 @@ class _FakeQueue:
 def _make_app() -> FastAPI:
     """构建用于测试的最小 FastAPI 应用，注入假用户。"""
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(tasks_router.router, prefix="/api/v1")
     return app
 

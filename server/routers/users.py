@@ -1,5 +1,10 @@
 """用户管理 API"""
 
+import hashlib
+import hmac
+import string
+from collections.abc import AsyncGenerator
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -7,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lib.db import async_engine
 from lib.db.models.user import User
-from server.auth import _password_hash, create_token
+from server.auth import _password_hash, check_credentials, create_token
 
 router = APIRouter()
 
@@ -15,7 +20,7 @@ router = APIRouter()
 _async_session_factory = async_sessionmaker(async_engine, expire_on_commit=False)
 
 
-async def get_session() -> AsyncSession:
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with _async_session_factory() as session:
         yield session
 
@@ -67,8 +72,25 @@ async def login(data: LoginRequest, session: AsyncSession = Depends(get_session)
     if not user:
         raise HTTPException(status_code=401, detail="用户名或密码错误")
 
-    if not _password_hash.verify(data.password, user.hashed_password):
+    # `default` 用户由旧版迁移创建时没有密码字段；兼容主认证链路中的
+    # AUTH_USERNAME/AUTH_PASSWORD，避免把 NULL 传给 pwdlib 导致 500。
+    # 初始化脚本早期使用 SHA-256，成功登录后升级为 pwdlib 哈希。
+    legacy_hash = user.hashed_password
+    should_upgrade_hash = legacy_hash is None
+    if legacy_hash is None:
+        password_ok = check_credentials(data.username, data.password)
+    elif len(legacy_hash) == 64 and all(char in string.hexdigits for char in legacy_hash):
+        expected_legacy_hash = hashlib.sha256(data.password.encode("utf-8")).hexdigest()
+        password_ok = hmac.compare_digest(expected_legacy_hash, legacy_hash)
+        should_upgrade_hash = password_ok
+    else:
+        password_ok = _password_hash.verify(data.password, legacy_hash)
+    if not password_ok:
         raise HTTPException(status_code=401, detail="用户名或密码错误")
+
+    if should_upgrade_hash:
+        user.hashed_password = _password_hash.hash(data.password)
+        await session.commit()
 
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="只有管理员才能登录后台")

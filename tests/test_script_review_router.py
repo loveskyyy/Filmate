@@ -45,7 +45,7 @@ def _client(monkeypatch, tmp_path: Path) -> tuple[TestClient, ProjectManager]:
     monkeypatch.setattr(router_mod, "get_project_manager", lambda: pm)
 
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(router_mod.router, prefix="/api/v1")
     return TestClient(app), pm
 

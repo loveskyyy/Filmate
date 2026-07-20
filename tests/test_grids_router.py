@@ -17,7 +17,7 @@ def _client(monkeypatch, **patches):
     for name, fn in patches.items():
         monkeypatch.setattr(grids, name, fn)
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(grids.router, prefix="/api/v1")
     return TestClient(app)
 

@@ -99,7 +99,7 @@ class OptionsAssembler:
         resolve_project_cwd: Callable[[str], Path],
         provider_env_loader: Callable[[], Awaitable[dict[str, str]]] | None = None,
         session_factory_provider: Callable[[], Any] | None = None,
-        user_id_provider: Callable[[], str] | None = None,
+        user_id_provider: Callable[[], int] | None = None,
     ) -> None:
         self.data_dir = Path(data_dir)
         self.projects_root = Path(projects_root)

@@ -49,7 +49,7 @@ class DbSessionStore:
         self,
         session_factory: async_sessionmaker,
         *,
-        user_id: str = DEFAULT_USER_ID,
+        user_id: int = DEFAULT_USER_ID,
     ) -> None:
         self._session_factory = session_factory
         self._user_id = user_id

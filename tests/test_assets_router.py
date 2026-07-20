@@ -29,7 +29,7 @@ async def _assets_env(tmp_path, monkeypatch):
     monkeypatch.setattr(assets, "pm", pm)
 
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(assets.router, prefix="/api/v1")
 
     yield {"client": TestClient(app), "pm": pm}

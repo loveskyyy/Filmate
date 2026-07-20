@@ -70,7 +70,7 @@ class TestTasksRouterMore:
         request = _FakeRequest(disconnect_after=2)
         stream = tasks_router.stream_tasks(
             request=request,
-            _user=CurrentUserInfo(id="default", sub="testuser", role="admin"),
+            _user=CurrentUserInfo(id=1, sub="testuser", role="admin"),
             project_name="demo",
             last_event_id=None,
             last_event_header=" 7 ",
@@ -102,7 +102,7 @@ class TestTasksRouterMore:
         request = _FakeRequest(disconnect_after=1)
         stream = tasks_router.stream_tasks(
             request=request,
-            _user=CurrentUserInfo(id="default", sub="testuser", role="admin"),
+            _user=CurrentUserInfo(id=1, sub="testuser", role="admin"),
             project_name="demo",
             last_event_id=0,
             last_event_header=None,
@@ -118,7 +118,7 @@ class TestTasksRouterMore:
     def test_get_task_not_found(self, monkeypatch):
         monkeypatch.setattr(tasks_router, "get_task_queue", lambda: _FakeQueue(task=None))
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.dependency_overrides[get_current_user_flexible] = lambda: CurrentUserInfo(
             id="default", sub="testuser", role="admin"
         )
@@ -169,7 +169,7 @@ class TestTaskErrorLocalization:
     def _client(self, monkeypatch, queue):
         monkeypatch.setattr(tasks_router, "get_task_queue", lambda: queue)
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.dependency_overrides[get_current_user_flexible] = lambda: CurrentUserInfo(
             id="default", sub="testuser", role="admin"
         )

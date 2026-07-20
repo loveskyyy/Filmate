@@ -199,7 +199,7 @@ async def get_media_generator(
     project_name: str,
     payload: dict | None = None,
     *,
-    user_id: str = DEFAULT_USER_ID,
+    user_id: int = DEFAULT_USER_ID,
     require_image_backend: bool = True,
     needs_i2i: bool = False,
     needs_audio: bool = False,
@@ -774,7 +774,7 @@ async def execute_storyboard_task(
     resource_id: str,
     payload: dict[str, Any],
     *,
-    user_id: str = DEFAULT_USER_ID,
+    user_id: int = DEFAULT_USER_ID,
     task_id: str | None = None,
 ) -> dict[str, Any]:
     script_file = payload.get("script_file")
@@ -865,7 +865,7 @@ async def execute_tts_task(
     resource_id: str,
     payload: dict[str, Any],
     *,
-    user_id: str = DEFAULT_USER_ID,
+    user_id: int = DEFAULT_USER_ID,
     task_id: str | None = None,
 ) -> dict[str, Any]:
     """为说书模式单个 segment 合成旁白音频（同步 TTS，无续传）。
@@ -945,7 +945,7 @@ async def execute_video_task(
     resource_id: str,
     payload: dict[str, Any],
     *,
-    user_id: str = DEFAULT_USER_ID,
+    user_id: int = DEFAULT_USER_ID,
     task_id: str | None = None,
 ) -> dict[str, Any]:
     script_file = payload.get("script_file")
@@ -1137,7 +1137,7 @@ async def execute_character_task(
     resource_id: str,
     payload: dict[str, Any],
     *,
-    user_id: str = DEFAULT_USER_ID,
+    user_id: int = DEFAULT_USER_ID,
     task_id: str | None = None,
 ) -> dict[str, Any]:
     prompt = str(payload.get("prompt", "") or "").strip()
@@ -1237,7 +1237,7 @@ async def execute_design_task(
     resource_id: str,
     payload: dict[str, Any],
     *,
-    user_id: str = DEFAULT_USER_ID,
+    user_id: int = DEFAULT_USER_ID,
 ) -> dict[str, Any]:
     """合并 execute_scene_task / execute_prop_task / execute_product_task：按 kind 查表派发。"""
     spec = ASSET_SPECS[kind]
@@ -1300,7 +1300,7 @@ async def execute_scene_task(
     resource_id: str,
     payload: dict[str, Any],
     *,
-    user_id: str = DEFAULT_USER_ID,
+    user_id: int = DEFAULT_USER_ID,
     task_id: str | None = None,
 ) -> dict[str, Any]:
     return await execute_design_task("scene", project_name, resource_id, payload, user_id=user_id)
@@ -1311,7 +1311,7 @@ async def execute_prop_task(
     resource_id: str,
     payload: dict[str, Any],
     *,
-    user_id: str = DEFAULT_USER_ID,
+    user_id: int = DEFAULT_USER_ID,
     task_id: str | None = None,
 ) -> dict[str, Any]:
     return await execute_design_task("prop", project_name, resource_id, payload, user_id=user_id)
@@ -1322,7 +1322,7 @@ async def execute_product_task(
     resource_id: str,
     payload: dict[str, Any],
     *,
-    user_id: str = DEFAULT_USER_ID,
+    user_id: int = DEFAULT_USER_ID,
     task_id: str | None = None,
 ) -> dict[str, Any]:
     return await execute_design_task("product", project_name, resource_id, payload, user_id=user_id)
@@ -1416,7 +1416,7 @@ async def execute_grid_task(
     resource_id: str,
     payload: dict[str, Any],
     *,
-    user_id: str = DEFAULT_USER_ID,
+    user_id: int = DEFAULT_USER_ID,
     task_id: str | None = None,
 ) -> dict[str, Any]:
     """Execute a grid image generation task.
@@ -1601,7 +1601,7 @@ async def _execute_reference_video_task_proxy(
     resource_id: str,
     payload: dict[str, Any],
     *,
-    user_id: str,
+    user_id: int,
     task_id: str | None = None,
 ) -> dict[str, Any]:
     """Lazy proxy to avoid circular import: reference_video_tasks imports from this module."""

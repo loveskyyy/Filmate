@@ -482,7 +482,7 @@ def _is_client_key_violation(exc: IntegrityError) -> bool:
 class EventLogStore:
     """事件日志 DB 访问：seq 单调分配（append-only）+ 幂等键查重。"""
 
-    def __init__(self, *, session_factory=None, user_id: str = DEFAULT_USER_ID):
+    def __init__(self, *, session_factory=None, user_id: int = DEFAULT_USER_ID):
         self._session_factory = session_factory or safe_session_factory
         self._user_id = user_id
 

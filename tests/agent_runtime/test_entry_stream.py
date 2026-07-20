@@ -245,7 +245,7 @@ class TestListSessionEntries:
         assert result["entries"] == []
 
 
-_FAKE_USER = CurrentUserInfo(id="default", sub="testuser", role="admin")
+_FAKE_USER = CurrentUserInfo(id=1, sub="testuser", role="admin")
 PROJECT = "demo"
 PREFIX = f"/api/v1/projects/{PROJECT}/assistant"
 

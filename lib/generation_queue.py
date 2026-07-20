@@ -99,7 +99,7 @@ class GenerationQueue:
         dependency_task_id: str | None = None,
         dependency_group: str | None = None,
         dependency_index: int | None = None,
-        user_id: str = DEFAULT_USER_ID,
+        user_id: int = DEFAULT_USER_ID,
         provider_id: str | None = None,
     ) -> dict[str, Any]:
         # caller 没传 provider_id → 入队时主动派生一次，让 claim 走 SQL 池过滤快路径；

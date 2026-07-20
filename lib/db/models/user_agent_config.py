@@ -21,7 +21,7 @@ class UserAgentConfig(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # 显示名称
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -62,7 +62,7 @@ class UserAgentPreset(TimestampMixin, Base):
     __table_args__ = (Index("ix_user_agent_preset_user_id", "user_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # 预设名称
     name: Mapped[str] = mapped_column(String(128), nullable=False)

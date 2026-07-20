@@ -265,7 +265,7 @@ async def execute_reference_video_task(
     resource_id: str,
     payload: dict[str, Any],
     *,
-    user_id: str = DEFAULT_USER_ID,
+    user_id: int = DEFAULT_USER_ID,
     task_id: str | None = None,
 ) -> dict[str, Any]:
     """处理一个 reference_video unit 的生成。

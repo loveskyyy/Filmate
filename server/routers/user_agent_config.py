@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -179,12 +180,9 @@ def preset_to_response(preset: UserAgentPreset) -> UserAgentPresetResponse:
 
 
 async def get_user_id(user: CurrentUser) -> int | None:
-    """从 CurrentUser 获取整数 user_id"""
-    # 尝试直接转换
-    try:
-        return int(user.id)
-    except (ValueError, TypeError):
-        pass
+    """从 CurrentUser 获取 user_id。"""
+    if user.id:
+        return user.id
 
     from lib.db.models.user import User
 
@@ -194,7 +192,7 @@ async def get_user_id(user: CurrentUser) -> int | None:
         return user_row.id if user_row else None
 
 
-async def get_session() -> AsyncSession:
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_factory() as session:
         yield session
 

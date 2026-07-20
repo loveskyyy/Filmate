@@ -19,7 +19,7 @@ _FIXED_FETCHED_AT = datetime(2026, 4, 21, 8, 5, 0, tzinfo=UTC)
 
 def _make_app() -> FastAPI:
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="u1", sub="tester")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="tester")
     app.dependency_overrides[get_config_service] = lambda: MagicMock()
     app.dependency_overrides[get_translator] = lambda: make_translator()
     app.include_router(system_config.router, prefix="/api/v1")

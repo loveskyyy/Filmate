@@ -61,7 +61,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     app = FastAPI()
     app.include_router(router_mod.router, prefix="/api/v1")
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="u1", sub="test", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="test", role="admin")
     return TestClient(app)
 
 

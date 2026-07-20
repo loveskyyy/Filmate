@@ -271,7 +271,7 @@ async def _enqueue_tts_segment(
     project_name: str,
     segment_id: str,
     script_file: str,
-    user_id: str,
+    user_id: int,
     provider_id: str | None,
     _t: Translator,
 ) -> dict:
@@ -434,7 +434,7 @@ async def _enqueue_asset_generation(
     project_name: str,
     resource_name: str,
     prompt: str,
-    user_id: str,
+    user_id: int,
     _t: Translator,
 ) -> dict:
     """项目级资产（character / scene / prop / product）设计图生成共用入队逻辑。"""

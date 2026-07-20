@@ -152,11 +152,10 @@ async def list_credentials(
     _user: CurrentUser,
     _t: Translator,
     session: AsyncSession = Depends(get_async_session),
-    for_user_id: str | None = None,
+    for_user_id: int | None = None,
 ) -> CredentialListResponse:
     repo = AgentCredentialRepository(session)
-    # 如果指定了 for_user_id 且非 "default"，使用它；否则使用 DEFAULT_USER_ID
-    target_user_id = for_user_id if for_user_id and for_user_id != "default" else DEFAULT_USER_ID
+    target_user_id = for_user_id if for_user_id is not None else DEFAULT_USER_ID
     creds = await repo.list_for_user(target_user_id)
     return CredentialListResponse(credentials=[_cred_to_response(c) for c in creds])
 
@@ -167,7 +166,7 @@ async def create_credential(
     _user: CurrentUser,
     _t: Translator,
     session: AsyncSession = Depends(get_async_session),
-    for_user_id: str | None = None,
+    for_user_id: int | None = None,
 ) -> CredentialResponse:
     if body.preset_id != CUSTOM_SENTINEL_ID:
         preset = get_preset(body.preset_id)
@@ -183,8 +182,7 @@ async def create_credential(
         display_name = body.display_name or "Custom"
         model = body.model
 
-    # 确定目标用户：如果指定了 for_user_id 且非 "default"，使用它；否则使用 DEFAULT_USER_ID
-    target_user_id = for_user_id if for_user_id and for_user_id != "default" else DEFAULT_USER_ID
+    target_user_id = for_user_id if for_user_id is not None else DEFAULT_USER_ID
 
     repo = AgentCredentialRepository(session)
     cred = await repo.create(

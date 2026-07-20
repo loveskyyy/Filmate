@@ -23,7 +23,7 @@ def _make_app(session_factory) -> FastAPI:
             await session.commit()
 
     app.dependency_overrides[get_async_session] = override_session
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(agent_config.router, prefix="/api/v1")
     app.include_router(custom_providers.router, prefix="/api/v1")
     return app

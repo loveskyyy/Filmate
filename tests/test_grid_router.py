@@ -42,7 +42,7 @@ class TestAdProjectRejected:
         monkeypatch.setattr(grids, "get_project_manager", lambda: _AdPM())
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.include_router(grids.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post(
@@ -66,7 +66,7 @@ class TestAdProjectRejected:
         monkeypatch.setattr(grids, "get_project_manager", lambda: _AdPM())
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.include_router(grids.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post("/api/v1/projects/demo/grids/g-1/regenerate")

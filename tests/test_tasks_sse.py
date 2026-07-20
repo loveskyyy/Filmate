@@ -9,7 +9,7 @@ from server.routers import tasks as tasks_router
 
 def _build_app():
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.dependency_overrides[get_current_user_flexible] = lambda: CurrentUserInfo(
         id="default", sub="testuser", role="admin"
     )

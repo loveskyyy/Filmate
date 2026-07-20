@@ -34,7 +34,7 @@ def upgrade() -> None:
         sa.Column("mtime_ms", sa.BigInteger(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("user_id", sa.String(), server_default="default", nullable=False),
+        sa.Column("user_id", sa.Integer(), server_default="1", nullable=False),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("project_key", "session_id", "subpath", "seq"),
     )
@@ -57,7 +57,7 @@ def upgrade() -> None:
         sa.Column("data", sa.JSON(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("user_id", sa.String(), server_default="default", nullable=False),
+        sa.Column("user_id", sa.Integer(), server_default="1", nullable=False),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("project_key", "session_id"),
     )

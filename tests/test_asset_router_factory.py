@@ -47,7 +47,7 @@ def _client(monkeypatch):
     fake_pm = _FakePM()
     monkeypatch.setattr(characters, "get_project_manager", lambda: fake_pm)
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(characters.router, prefix="/api/v1")
     return TestClient(app), fake_pm
 
@@ -161,7 +161,7 @@ class TestAssetRouterNoLeak:
             lambda: (_ for _ in ()).throw(RuntimeError("LEAK_add")),
         )
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.include_router(characters.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post("/api/v1/projects/demo/characters", json={"name": "Bob", "description": "x"})
@@ -176,7 +176,7 @@ class TestAssetRouterNoLeak:
             lambda: (_ for _ in ()).throw(RuntimeError("LEAK_update")),
         )
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.include_router(characters.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.patch("/api/v1/projects/demo/characters/Alice", json={"description": "new"})
@@ -191,7 +191,7 @@ class TestAssetRouterNoLeak:
             lambda: (_ for _ in ()).throw(RuntimeError("LEAK_delete")),
         )
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.include_router(characters.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.delete("/api/v1/projects/demo/characters/Alice")

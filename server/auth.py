@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 class CurrentUserInfo(BaseModel):
     """Current authenticated user info."""
 
-    id: str
+    id: int
     sub: str
     role: str = "admin"
 
@@ -212,11 +212,11 @@ def check_credentials(username: str, password: str) -> bool:
 
         from sqlalchemy import select
 
-        from lib.db import AsyncSession
+        from lib.db import async_session_factory
         from lib.db.models.user import User
 
         async def _check_db():
-            async with AsyncSession() as session:
+            async with async_session_factory() as session:
                 result = await session.execute(select(User).where(User.username == username))
                 user = result.scalar_one_or_none()
                 if user and user.hashed_password:

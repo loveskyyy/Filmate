@@ -77,7 +77,7 @@ class MediaGenerator:
         audio_backend: Optional["AudioBackend"] = None,
         *,
         config_resolver: Optional["ConfigResolver"] = None,
-        user_id: str = DEFAULT_USER_ID,
+        user_id: int = DEFAULT_USER_ID,
         image_provider_id: str | None = None,
         video_provider_id: str | None = None,
     ):

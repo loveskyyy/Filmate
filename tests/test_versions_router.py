@@ -74,7 +74,7 @@ def _client(monkeypatch):
     monkeypatch.setattr(versions, "get_version_manager", lambda project_name: _FakeVM())
 
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(versions.router, prefix="/api/v1")
     return TestClient(app), fake_pm
 
@@ -183,7 +183,7 @@ class TestVersionsRouter:
         monkeypatch.setattr(versions, "get_version_manager", lambda project_name: _FakeVM())
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.include_router(versions.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post("/api/v1/projects/demo/versions/reference_videos/E1U1/restore/1")
@@ -241,7 +241,7 @@ class TestVersionsRouter:
         monkeypatch.setattr(versions, "get_version_manager", lambda project_name: _FakeVM())
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.include_router(versions.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post("/api/v1/projects/demo/versions/videos/E1S01/restore/1")
@@ -296,7 +296,7 @@ class TestVersionsRouter:
         monkeypatch.setattr(versions, "get_version_manager", lambda project_name: _FakeVM())
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.include_router(versions.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post("/api/v1/projects/demo/versions/storyboards/E1S01/restore/1")
@@ -327,7 +327,7 @@ class TestVersionsRouter:
         monkeypatch.setattr(versions, "get_version_manager", lambda project_name: _FakeVM())
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.include_router(versions.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post("/api/v1/projects/demo/versions/storyboards/E1S01/restore/1")
@@ -363,7 +363,7 @@ class TestVersionsRouter:
         monkeypatch.setattr(versions, "get_version_manager", lambda project_name: _FakeVM())
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.include_router(versions.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post("/api/v1/projects/demo/versions/storyboards/E1S01/restore/1")
@@ -385,7 +385,7 @@ class TestVersionsRouter:
         monkeypatch.setattr(versions, "get_version_manager", lambda name: _FakeVM())
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.include_router(versions.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post("/api/v1/projects/demo/versions/storyboards/E1S01/restore/1")
@@ -405,7 +405,7 @@ class TestVersionsRouter:
         )
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.include_router(versions.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.get("/api/v1/projects/demo/versions/characters/Alice")
@@ -423,7 +423,7 @@ class TestVersionsRouter:
         )
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.include_router(versions.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post("/api/v1/projects/demo/versions/characters/Alice/restore/1")

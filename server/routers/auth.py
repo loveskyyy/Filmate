@@ -98,7 +98,6 @@ class RegisterResponse(BaseModel):
 async def register(
     body: RegisterRequest,
     session: AsyncSession = Depends(get_async_session),
-    _t: Translator = None,
 ):
     """用户注册
 

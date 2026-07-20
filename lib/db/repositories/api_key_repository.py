@@ -38,7 +38,7 @@ class ApiKeyRepository(BaseRepository):
         key_hash: str,
         key_prefix: str,
         expires_at: datetime | None = None,
-        user_id: str = DEFAULT_USER_ID,
+        user_id: int = DEFAULT_USER_ID,
     ) -> dict[str, Any]:
         """Create a new API key record."""
         row = ApiKey(

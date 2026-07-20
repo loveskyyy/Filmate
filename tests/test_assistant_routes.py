@@ -14,7 +14,7 @@ from tests.factories import make_session_meta
 PROJECT = "demo"
 PREFIX = f"/api/v1/projects/{PROJECT}/assistant"
 
-_FAKE_USER = CurrentUserInfo(id="default", sub="testuser", role="admin")
+_FAKE_USER = CurrentUserInfo(id=1, sub="testuser", role="admin")
 
 
 def _override_translator():

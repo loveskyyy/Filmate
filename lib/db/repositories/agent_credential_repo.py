@@ -27,7 +27,7 @@ class AgentCredentialRepository(BaseRepository):
         sonnet_model: str | None = None,
         opus_model: str | None = None,
         subagent_model: str | None = None,
-        user_id: str = DEFAULT_USER_ID,
+        user_id: int = DEFAULT_USER_ID,
     ) -> AgentAnthropicCredential:
         cred = AgentAnthropicCredential(
             user_id=user_id,
@@ -51,7 +51,7 @@ class AgentCredentialRepository(BaseRepository):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def list_for_user(self, user_id: str = DEFAULT_USER_ID) -> list[AgentAnthropicCredential]:
+    async def list_for_user(self, user_id: int = DEFAULT_USER_ID) -> list[AgentAnthropicCredential]:
         stmt = (
             select(AgentAnthropicCredential)
             .where(AgentAnthropicCredential.user_id == user_id)
@@ -60,7 +60,7 @@ class AgentCredentialRepository(BaseRepository):
         result = await self.session.execute(stmt)
         return list(result.scalars())
 
-    async def get_active(self, user_id: str = DEFAULT_USER_ID) -> AgentAnthropicCredential | None:
+    async def get_active(self, user_id: int = DEFAULT_USER_ID) -> AgentAnthropicCredential | None:
         stmt = select(AgentAnthropicCredential).where(
             AgentAnthropicCredential.user_id == user_id,
             AgentAnthropicCredential.is_active.is_(True),
@@ -77,7 +77,7 @@ class AgentCredentialRepository(BaseRepository):
         await self.session.flush()
         return cred
 
-    async def set_active(self, cred_id: int, user_id: str = DEFAULT_USER_ID) -> None:
+    async def set_active(self, cred_id: int, user_id: int = DEFAULT_USER_ID) -> None:
         """互斥切 active：先把同 user 全置 False，再把目标置 True。
 
         Raises:

@@ -6,7 +6,7 @@ ProviderCredential 同模式)。
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Index, String, Text, text
+from sqlalchemy import Boolean, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from lib.db.base import DEFAULT_USER_ID, Base, TimestampMixin
@@ -29,7 +29,7 @@ class AgentAnthropicCredential(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, default=DEFAULT_USER_ID)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=DEFAULT_USER_ID)
     preset_id: Mapped[str] = mapped_column(String(64), nullable=False)  # "deepseek" | "__custom__" | ...
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
     base_url: Mapped[str] = mapped_column(Text, nullable=False)

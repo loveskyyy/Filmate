@@ -2,17 +2,18 @@
 """初始化管理员账户"""
 
 import asyncio
-import hashlib
-import secrets
 from datetime import UTC, datetime
 
+from pwdlib import PasswordHash
 from sqlalchemy import text
 
 from lib.db.engine import get_async_session
 
+_password_hash = PasswordHash.recommended()
+
 
 def make_hash(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+    return _password_hash.hash(password)
 
 
 async def main():
@@ -39,15 +40,13 @@ async def main():
 
         # 插入（包含所有必填字段）
         now = datetime.now(UTC)
-        uid = secrets.token_hex(8)
         pw_hash = make_hash("root123")
         await session.execute(
             text("""
-            INSERT INTO users (id, username, hashed_password, role, is_active, credits, created_at, updated_at)
-            VALUES (:id, :username, :password, :role, :is_active, :credits, :created_at, :updated_at)
+            INSERT INTO users (username, hashed_password, role, is_active, credits, created_at, updated_at)
+            VALUES (:username, :password, :role, :is_active, :credits, :created_at, :updated_at)
         """),
             {
-                "id": uid,
                 "username": "root",
                 "password": pw_hash,
                 "role": "admin",

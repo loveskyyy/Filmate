@@ -71,7 +71,7 @@ def _client(monkeypatch, fake_pm, fake_queue, *, audio_provider_ready=True):
     monkeypatch.setattr(ConfigResolver, "resolve_audio_backend", _resolve)
 
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(generate.router, prefix="/api/v1")
     return TestClient(app)
 

@@ -2,10 +2,10 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Integer
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-DEFAULT_USER_ID = "default"
+DEFAULT_USER_ID = 1
 
 
 class Base(DeclarativeBase):
@@ -33,10 +33,10 @@ class TimestampMixin:
 class UserOwnedMixin:
     """User ownership marker."""
 
-    user_id: Mapped[str] = mapped_column(
-        String,
+    user_id: Mapped[int] = mapped_column(
+        Integer,
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        server_default=DEFAULT_USER_ID,
+        server_default=str(DEFAULT_USER_ID),
         index=True,
     )

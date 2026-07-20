@@ -41,7 +41,7 @@ class _FakePM:
 def _client(monkeypatch, fake_pm):
     monkeypatch.setattr(props, "get_project_manager", lambda: fake_pm)
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(props.router, prefix="/api/v1")
     return TestClient(app)
 

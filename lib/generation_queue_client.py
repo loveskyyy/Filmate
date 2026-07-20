@@ -121,7 +121,7 @@ async def enqueue_and_wait(
     dependency_task_id: str | None = None,
     dependency_group: str | None = None,
     dependency_index: int | None = None,
-    user_id: str = DEFAULT_USER_ID,
+    user_id: int = DEFAULT_USER_ID,
 ) -> dict[str, Any]:
     enqueue_result = await enqueue_task_only(
         project_name=project_name,
@@ -170,7 +170,7 @@ async def enqueue_task_only(
     dependency_task_id: str | None = None,
     dependency_group: str | None = None,
     dependency_index: int | None = None,
-    user_id: str = DEFAULT_USER_ID,
+    user_id: int = DEFAULT_USER_ID,
 ) -> dict[str, Any]:
     queue = get_generation_queue()
 

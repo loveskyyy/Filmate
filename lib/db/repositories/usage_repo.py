@@ -84,7 +84,7 @@ class UsageRepository(BaseRepository):
         aspect_ratio: str | None = None,
         generate_audio: bool = True,
         provider: str = PROVIDER_GEMINI,
-        user_id: str = DEFAULT_USER_ID,
+        user_id: int = DEFAULT_USER_ID,
         segment_id: str | None = None,
     ) -> int:
         now = utc_now()

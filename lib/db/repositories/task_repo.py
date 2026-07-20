@@ -110,7 +110,7 @@ class TaskRepository(BaseRepository):
         dependency_task_id: str | None = None,
         dependency_group: str | None = None,
         dependency_index: int | None = None,
-        user_id: str = DEFAULT_USER_ID,
+        user_id: int = DEFAULT_USER_ID,
         provider_id: str | None = None,
     ) -> dict[str, Any]:
         now = utc_now()
