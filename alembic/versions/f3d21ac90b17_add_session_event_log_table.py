@@ -30,7 +30,7 @@ def upgrade() -> None:
         sa.Column("client_key", sa.String(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("user_id", sa.String(), server_default="default", nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=True),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("session_id", "seq"),
     )

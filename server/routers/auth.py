@@ -10,7 +10,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from lib.db.engine import get_async_session
 from lib.i18n import Translator
 from server.auth import (
     CurrentUser,
@@ -78,6 +80,64 @@ async def login_for_access_token(
     token = create_token(form_data.username)
     logger.info("用户登录成功: %s", form_data.username)
     return TokenResponse(access_token=token, token_type="bearer")
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    email: str | None = None
+
+
+class RegisterResponse(BaseModel):
+    success: bool
+    message: str
+    user_id: int | None = None
+
+
+@router.post("/auth/register", response_model=RegisterResponse)
+async def register(
+    body: RegisterRequest,
+    session: AsyncSession = Depends(get_async_session),
+    _t: Translator = None,
+):
+    """用户注册
+
+    创建新用户账号。
+    """
+    from sqlalchemy import select
+
+    from lib.db.models.user import User
+    from server.auth import _password_hash
+
+    # 验证用户名和密码
+    if not body.username or len(body.username) < 3:
+        raise HTTPException(status_code=400, detail="用户名至少3个字符")
+    if not body.password or len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="密码至少6个字符")
+
+    # 检查用户名是否已存在
+    result = await session.execute(select(User).where(User.username == body.username))
+    existing = result.scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail="用户名已存在")
+
+    # 创建新用户
+    new_user = User(
+        username=body.username,
+        email=body.email,
+        hashed_password=_password_hash.hash(body.password),
+        role="user",
+    )
+    session.add(new_user)
+    await session.commit()
+    await session.refresh(new_user)
+
+    logger.info("用户注册成功: %s", body.username)
+    return RegisterResponse(
+        success=True,
+        message="注册成功",
+        user_id=new_user.id,
+    )
 
 
 @router.get("/auth/verify", response_model=VerifyResponse)

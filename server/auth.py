@@ -190,15 +190,42 @@ def check_credentials(username: str, password: str) -> bool:
     从 AUTH_USERNAME（默认 admin）和 AUTH_PASSWORD 环境变量读取。
     即使用户名不匹配也执行哈希验证，防止时序攻击。
 
+    如果环境变量中没有配置，则查询数据库验证用户。
+
     ``AUTH_ENABLED=false`` 时无条件返回 True。
     """
     if not is_auth_enabled():
         return True
+
+    # 先检查环境变量配置的 admin 账户
     expected_username = os.environ.get("AUTH_USERNAME", "admin")
     pw_hash = _get_password_hash()
     username_ok = secrets.compare_digest(username, expected_username)
     password_ok = _password_hash.verify(password, pw_hash)
-    return username_ok and password_ok
+
+    if username_ok and password_ok:
+        return True
+
+    # 如果环境变量不匹配，尝试查询数据库用户
+    try:
+        import asyncio
+
+        from sqlalchemy import select
+
+        from lib.db import AsyncSession
+        from lib.db.models.user import User
+
+        async def _check_db():
+            async with AsyncSession() as session:
+                result = await session.execute(select(User).where(User.username == username))
+                user = result.scalar_one_or_none()
+                if user and user.hashed_password:
+                    return _password_hash.verify(password, user.hashed_password)
+                return False
+
+        return asyncio.run(_check_db())
+    except Exception:
+        return False
 
 
 def ensure_auth_password(env_path: str | None = None) -> str:
