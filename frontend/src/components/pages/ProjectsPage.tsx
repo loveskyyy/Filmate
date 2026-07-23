@@ -1138,6 +1138,7 @@ export function ProjectsPage() {
   const [importingProject, setImportingProject] = useState(false);
   const [conflictProject, setConflictProject] = useState<string | null>(null);
   const [conflictFile, setConflictFile] = useState<File | null>(null);
+  const [cloudOverwriteUnsupported, setCloudOverwriteUnsupported] = useState(false);
   type ImportDiagnosticsState =
     | { source: "success"; diagnostics: ImportFailureDiagnostics; navigateTo: string }
     | { source: "failure"; diagnostics: ImportFailureDiagnostics };
@@ -1202,6 +1203,7 @@ export function ProjectsPage() {
       const result = await API.importProject(file, policy);
       setConflictProject(null);
       setConflictFile(null);
+      setCloudOverwriteUnsupported(false);
       setImportDiagnostics(null);
       await fetchProjects();
 
@@ -1244,16 +1246,18 @@ export function ProjectsPage() {
       const error = err as Error & {
         status?: number;
         conflict_project_name?: string;
+        cloud_overwrite_unsupported?: boolean;
         diagnostics?: ImportFailureDiagnostics;
       };
 
       if (
         error.status === 409 &&
         error.conflict_project_name &&
-        policy === "prompt"
+        (policy === "prompt" || error.cloud_overwrite_unsupported)
       ) {
         setConflictFile(file);
         setConflictProject(error.conflict_project_name);
+        setCloudOverwriteUnsupported(error.cloud_overwrite_unsupported === true);
         return;
       }
 
@@ -1493,10 +1497,12 @@ export function ProjectsPage() {
         <ConflictDialog
           projectName={conflictProject}
           importing={importingProject}
+          allowOverwrite={!cloudOverwriteUnsupported}
           onConfirm={(policy) => voidCall(doImport(conflictFile, policy))}
           onCancel={() => {
             setConflictProject(null);
             setConflictFile(null);
+            setCloudOverwriteUnsupported(false);
           }}
         />
       )}
@@ -1574,11 +1580,13 @@ export function ProjectsPage() {
 function ConflictDialog({
   projectName,
   importing,
+  allowOverwrite,
   onConfirm,
   onCancel,
 }: {
   projectName: string;
   importing: boolean;
+  allowOverwrite: boolean;
   onConfirm: (policy: "overwrite" | "rename") => void;
   onCancel: () => void;
 }) {
@@ -1624,27 +1632,33 @@ function ConflictDialog({
               <span className="mx-1 rounded bg-bg/70 px-1.5 py-0.5 font-mono text-text">
                 {projectName}
               </span>
-              {t("dashboard:already_exists_conflict_hint")}
+              {t(
+                allowOverwrite
+                  ? "dashboard:already_exists_conflict_hint"
+                  : "dashboard:cloud_overwrite_unavailable_hint",
+              )}
             </p>
           </div>
         </div>
 
         <div className="mt-5 grid gap-3">
-          <button
-            type="button"
-            onClick={() => onConfirm("overwrite")}
-            disabled={importing}
-            aria-label={t("dashboard:overwrite_existing")}
-            className="flex w-full items-center justify-between rounded-xl border border-warm-ring bg-warm-tint px-4 py-3 text-left text-sm text-warm-bright transition-colors hover:border-warm-bright/60 hover:bg-warm-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warm-ring disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <span>
-              <span className="block font-medium">{t("dashboard:overwrite_existing")}</span>
-              <span className="mt-1 block text-xs text-warm-fade">
-                {t("dashboard:overwrite_hint")}
+          {allowOverwrite && (
+            <button
+              type="button"
+              onClick={() => onConfirm("overwrite")}
+              disabled={importing}
+              aria-label={t("dashboard:overwrite_existing")}
+              className="flex w-full items-center justify-between rounded-xl border border-warm-ring bg-warm-tint px-4 py-3 text-left text-sm text-warm-bright transition-colors hover:border-warm-bright/60 hover:bg-warm-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warm-ring disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span>
+                <span className="block font-medium">{t("dashboard:overwrite_existing")}</span>
+                <span className="mt-1 block text-xs text-warm-fade">
+                  {t("dashboard:overwrite_hint")}
+                </span>
               </span>
-            </span>
-            {importing && <Loader2 className="h-4 w-4 motion-safe:animate-spin" />}
-          </button>
+              {importing && <Loader2 className="h-4 w-4 motion-safe:animate-spin" />}
+            </button>
+          )}
 
           <button
             type="button"

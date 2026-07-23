@@ -127,6 +127,33 @@ def _build_generator(tmp_path: Path) -> MediaGenerator:
 
 
 class TestMediaGenerator:
+    def test_generated_media_syncs_current_and_version_copy(self, tmp_path, monkeypatch):
+        gen = _build_generator(tmp_path)
+        version_path = "versions/storyboards/E1S01_v1.png"
+
+        def get_versions(resource_type, resource_id):
+            return {"current_version": 1, "versions": [{"file": version_path}]}
+
+        gen.versions.get_versions = get_versions
+        calls = []
+
+        class _Storage:
+            enabled = True
+
+            async def sync_project_paths_async(self, project_path, relative_paths):
+                calls.append((project_path, relative_paths))
+
+        monkeypatch.setattr("lib.media_generator.get_media_storage", lambda: _Storage())
+
+        gen.generate_image(
+            prompt="p",
+            resource_type="storyboards",
+            resource_id="E1S01",
+            aspect_ratio="9:16",
+        )
+
+        assert calls == [(gen.project_path, ["storyboards/scene_E1S01.png", version_path])]
+
     def test_get_output_path_and_invalid_type(self, tmp_path):
         gen = _build_generator(tmp_path)
         assert gen._get_output_path("storyboards", "E1S01").name == "scene_E1S01.png"

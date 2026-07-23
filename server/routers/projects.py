@@ -34,6 +34,7 @@ from lib.asset_fingerprints import compute_asset_fingerprints
 from lib.config.resolver import ConfigResolver
 from lib.db import async_session_factory
 from lib.i18n import Translator
+from lib.media_storage import get_media_storage
 from lib.profile_manifest import ContentMode
 from lib.project_change_hints import project_change_source
 from lib.project_manager import EpisodeScriptReboundError, ProjectManager, SourceKind
@@ -818,7 +819,12 @@ async def delete_project(name: str, _user: CurrentUser, _t: Translator):
     try:
 
         def _sync():
-            get_project_manager().delete_project_directory(name)
+            project_manager = get_project_manager()
+            # 先验证本地项目存在，随后删除同名七牛前缀。云端操作失败时不删除本地目录，
+            # 以免留下无法恢复的部分删除状态。
+            project_manager.get_project_path(name)
+            get_media_storage(project_manager.projects_root).delete_project_media(name)
+            project_manager.delete_project_directory(name)
             return {"success": True, "message": _t("project_deleted", name=name)}
 
         return await asyncio.to_thread(_sync)

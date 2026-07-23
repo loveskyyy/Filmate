@@ -67,6 +67,7 @@ export default {
   'rename_hint': 'Keep the existing project and automatically generate a new ID for the imported one',
   'id_intended_hint': 'The project ID intended for use in the import package',
   'already_exists_conflict_hint': 'already exists. You can overwrite the existing project or auto-rename it to continue importing.',
+  'cloud_overwrite_unavailable_hint': 'already exists. Cloud media storage is enabled, so auto-rename is required to continue importing.',
   'project_overview': 'Project Overview',
   'source_files': 'Source Files',
   'upload_source_files': 'Upload source files',

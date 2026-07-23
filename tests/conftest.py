@@ -27,6 +27,18 @@ from lib.db.base import Base
 from server.agent_runtime.session_manager import SessionManager
 from server.agent_runtime.session_store import SessionMetaStore
 
+_QINIU_ENV_KEYS = (
+    "QINIU_ENABLED",
+    "QINIU_ACCESS_KEY",
+    "QINIU_SECRET_KEY",
+    "QINIU_BUCKET",
+    "QINIU_DOMAIN",
+    "QINIU_OBJECT_PREFIX",
+    "QINIU_UPLOAD_TOKEN_TTL_SECONDS",
+    "QINIU_DOWNLOAD_URL_TTL_SECONDS",
+    "QINIU_MEDIA_CACHE_MAX_BYTES",
+)
+
 # ---------------------------------------------------------------------------
 # General utilities
 # ---------------------------------------------------------------------------
@@ -84,6 +96,13 @@ def _reset_app_data_dir_cache():
     _reset_for_tests()
     yield
     _reset_for_tests()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_qiniu_environment(monkeypatch):
+    """测试必须显式声明七牛配置，避免仓库 .env 污染本地存储用例。"""
+    for name in _QINIU_ENV_KEYS:
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(autouse=True)

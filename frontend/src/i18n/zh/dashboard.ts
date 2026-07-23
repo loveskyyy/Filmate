@@ -68,6 +68,7 @@ export default {
   'rename_hint': '保留现有项目，新导入项目自动生成新的内部编号',
   'id_intended_hint': '导入包准备使用的项目编号',
   'already_exists_conflict_hint': '已存在。你可以覆盖现有项目，或自动重命名后继续导入。',
+  'cloud_overwrite_unavailable_hint': '已存在。云端媒体存储已启用，只能自动重命名后继续导入。',
   'project_overview': '项目概览',
   'source_files': '源文件',
   'upload_source_files': '上传源文件',

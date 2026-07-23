@@ -68,6 +68,7 @@ export default {
   'rename_hint': 'Giữ dự án hiện có và tự sinh ID mới cho dự án nhập',
   'id_intended_hint': 'ID dự án dự định dùng trong gói nhập',
   'already_exists_conflict_hint': 'đã tồn tại. Bạn có thể ghi đè dự án hiện có hoặc tự đổi tên để tiếp tục nhập.',
+  'cloud_overwrite_unavailable_hint': 'đã tồn tại. Lưu trữ media đám mây đang bật, nên cần tự đổi tên để tiếp tục nhập.',
   'project_overview': 'Tổng quan dự án',
   'source_files': 'Tệp gốc',
   'upload_source_files': 'Tải lên tệp gốc',

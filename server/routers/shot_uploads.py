@@ -19,6 +19,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from lib.app_data_dir import app_data_dir
 from lib.i18n import Translator
 from lib.image_utils import normalize_storyboard_upload
+from lib.media_storage import get_media_storage
 from lib.project_change_hints import project_change_source
 from lib.project_manager import ProjectManager
 from lib.resource_paths import resource_relative_path
@@ -115,6 +116,12 @@ async def upload_shot_media(
             )
 
             if kind == "storyboard":
+                history = versions.get_versions(resource_type, shot_id)
+                records = history.get("versions") or []
+                sync_paths = [relative_path]
+                if records and isinstance(records[-1].get("file"), str):
+                    sync_paths.append(records[-1]["file"])
+                await get_media_storage().sync_project_paths_async(project_path, sync_paths)
                 await finalize_shot_storyboard_upload(
                     project_name=project_name, script_file=script_file, shot_id=shot_id, asset_path=relative_path
                 )
@@ -125,6 +132,7 @@ async def upload_shot_media(
                     shot_id=shot_id,
                     project_path=project_path,
                     video_rel=relative_path,
+                    versions=versions,
                 )
 
             # emit 内部会读剧本解析 episode 并计算指纹，放线程池避免阻塞事件循环；

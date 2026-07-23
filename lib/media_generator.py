@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 from lib.db.base import DEFAULT_USER_ID
 from lib.gemini_shared import RateLimiter
+from lib.media_storage import get_media_storage
 from lib.resource_paths import resource_relative_path
 from lib.usage_tracker import UsageTracker
 from lib.version_manager import VersionManager
@@ -148,6 +149,22 @@ class MediaGenerator:
     def _ensure_parent_dir(self, output_path: Path) -> None:
         """确保输出目录存在"""
         output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    async def _sync_generated_resource(self, resource_type: str, resource_id: str) -> None:
+        """将当前资源和刚创建的版本同步到对象存储。
+
+        路径仍由 ``resource_paths`` / ``versions.json`` 表达；启用云端存储后上传失败
+        必须向上冒泡，避免任务把尚不可从私有空间读取的媒体标记为成功。
+        """
+        storage = get_media_storage()
+        if not storage.enabled:
+            return
+        relative_paths = [resource_relative_path(resource_type, resource_id)]
+        history = self.versions.get_versions(resource_type, resource_id)
+        versions = history.get("versions") or []
+        if versions and isinstance(versions[-1].get("file"), str):
+            relative_paths.append(versions[-1]["file"])
+        await storage.sync_project_paths_async(self.project_path, relative_paths)
 
     async def _reference_limits(self, provider_id: str | None) -> "PayloadLimits":
         """解析参考上传副本的 PayloadLimits。
@@ -392,6 +409,8 @@ class MediaGenerator:
             **version_metadata,
         )
 
+        await self._sync_generated_resource(resource_type, resource_id)
+
         return output_path, new_version
 
     async def generate_audio_async(
@@ -482,6 +501,8 @@ class MediaGenerator:
             source_file=output_path,
             **version_metadata,
         )
+
+        await self._sync_generated_resource(resource_type, resource_id)
 
         return output_path, new_version
 
@@ -739,6 +760,8 @@ class MediaGenerator:
             **version_metadata,
         )
 
+        await self._sync_generated_resource(resource_type, resource_id)
+
         return output_path, new_version, video_ref, video_uri
 
     async def resume_video_async(
@@ -868,5 +891,7 @@ class MediaGenerator:
             duration_seconds=duration_int,
             **version_metadata,
         )
+
+        await self._sync_generated_resource(resource_type, resource_id)
 
         return output_path, new_version, video_ref, video_uri

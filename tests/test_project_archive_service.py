@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from lib.media_storage import MediaStorageError
 from lib.project_manager import ProjectManager
 from server.services import project_archive as project_archive_module
 from server.services.project_archive import (
@@ -511,6 +512,75 @@ class TestProjectArchiveService:
         assert pm.get_project_path("demo").exists()
         assert pm.get_project_path(result.project_name).exists()
 
+    def test_import_syncs_media_to_qiniu_before_installing_project(self, tmp_path, monkeypatch):
+        pm = ProjectManager(tmp_path / "projects")
+        _create_project(pm)
+        service = ProjectArchiveService(pm)
+        archive_path, _ = service.export_project("demo")
+        shutil.rmtree(pm.get_project_path("demo"))
+
+        target_dir = pm.projects_root / "demo"
+        synced: list[tuple[str, list[str]]] = []
+
+        class _Storage:
+            enabled = True
+
+            def sync_project_media(self, project_path: Path, *, object_project_name: str) -> None:
+                assert project_path.name == "project"
+                assert not target_dir.exists()
+                synced.append(
+                    (
+                        object_project_name,
+                        sorted(
+                            path.relative_to(project_path).as_posix()
+                            for path in project_path.rglob("*")
+                            if path.is_file() and path.suffix in {".png", ".mp4"}
+                        ),
+                    )
+                )
+
+        monkeypatch.setattr(project_archive_module, "get_media_storage", lambda _root: _Storage())
+
+        result = service.import_project_archive(archive_path, uploaded_filename="demo.zip")
+
+        assert result.project_name == "demo"
+        assert synced == [
+            (
+                "demo",
+                [
+                    "characters/Hero.png",
+                    "characters/refs/Hero.png",
+                    "output/final.mp4",
+                    "props/Key.png",
+                    "storyboards/scene_E1S01.png",
+                    "style_reference.png",
+                    "versions/storyboards/E1S01_v1.png",
+                    "videos/scene_E1S01.mp4",
+                ],
+            )
+        ]
+
+    def test_import_does_not_install_project_when_qiniu_sync_fails(self, tmp_path, monkeypatch):
+        pm = ProjectManager(tmp_path / "projects")
+        _create_project(pm)
+        service = ProjectArchiveService(pm)
+        archive_path, _ = service.export_project("demo")
+        shutil.rmtree(pm.get_project_path("demo"))
+
+        class _Storage:
+            enabled = True
+
+            def sync_project_media(self, _project_path: Path, *, object_project_name: str) -> None:
+                assert object_project_name == "demo"
+                raise MediaStorageError("七牛媒体上传失败")
+
+        monkeypatch.setattr(project_archive_module, "get_media_storage", lambda _root: _Storage())
+
+        with pytest.raises(MediaStorageError, match="上传失败"):
+            service.import_project_archive(archive_path, uploaded_filename="demo.zip")
+
+        assert not (pm.projects_root / "demo").exists()
+
     def test_import_prompt_conflict_requires_user_confirmation(self, tmp_path):
         pm = ProjectManager(tmp_path / "projects")
         _create_project(pm)
@@ -549,6 +619,35 @@ class TestProjectArchiveService:
         assert result.conflict_resolution == "overwritten"
         assert pm.load_project("demo")["style"] == "Fresh"
         assert (pm.get_project_path("demo") / "source" / "chapter.txt").read_text(encoding="utf-8") == "source"
+
+    def test_import_rejects_overwrite_before_qiniu_upload(self, tmp_path, monkeypatch):
+        pm = ProjectManager(tmp_path / "projects")
+        _create_project(pm, style="Fresh")
+        service = ProjectArchiveService(pm)
+        archive_path, _ = service.export_project("demo")
+
+        project = pm.load_project("demo")
+        project["style"] = "Stale"
+        pm.save_project("demo", project)
+
+        class _Storage:
+            enabled = True
+
+            def sync_project_media(self, *_args, **_kwargs) -> None:
+                raise AssertionError("覆盖导入不应开始上传七牛对象")
+
+        monkeypatch.setattr(project_archive_module, "get_media_storage", lambda _root: _Storage())
+
+        with pytest.raises(ProjectArchiveValidationError) as exc_info:
+            service.import_project_archive(
+                archive_path,
+                uploaded_filename="demo.zip",
+                conflict_policy="overwrite",
+            )
+
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.extra["cloud_overwrite_unsupported"] is True
+        assert pm.load_project("demo")["style"] == "Stale"
 
     def test_import_materializes_claude_with_manifest(self, tmp_path, monkeypatch):
         """导入项目应物化 .claude 为真目录 + 写 manifest（非 symlink）。

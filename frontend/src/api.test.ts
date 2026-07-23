@@ -744,6 +744,37 @@ describe("API", () => {
       expect((fetchMock.mock.calls[0][1] as RequestInit).body).toBeInstanceOf(FormData);
     });
 
+    it("maps unstructured import errors into visible diagnostics", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        mockResponse({
+          ok: false,
+          status: 400,
+          statusText: "Bad Request",
+          jsonData: {
+            detail: "上传文件不是有效的 ZIP 归档",
+            errors: ["File is not a zip file"],
+            warnings: ["文件扩展名与内容不一致"],
+          },
+        }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      await expect(
+        API.importProject(new File(["not-a-zip"], "video.mp4", { type: "video/mp4" })),
+      ).rejects.toMatchObject({
+        message: "上传文件不是有效的 ZIP 归档",
+        diagnostics: {
+          blocking: [
+            { code: "import_error", message: "File is not a zip file" },
+          ],
+          auto_fixable: [],
+          warnings: [
+            { code: "import_warning", message: "文件扩展名与内容不一致" },
+          ],
+        },
+      });
+    });
+
     it("preserves conflict metadata for secondary confirmation", async () => {
       const fetchMock = vi.fn().mockResolvedValue(
         mockResponse({
@@ -755,6 +786,7 @@ describe("API", () => {
             errors: ["项目编号 'demo' 已存在"],
             warnings: [],
             conflict_project_name: "demo",
+            cloud_overwrite_unsupported: true,
             diagnostics: {
               blocking: [],
               auto_fixable: [],
@@ -771,6 +803,7 @@ describe("API", () => {
         message: "检测到项目编号冲突",
         status: 409,
         conflict_project_name: "demo",
+        cloud_overwrite_unsupported: true,
       });
     });
 

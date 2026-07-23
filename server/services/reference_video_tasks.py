@@ -16,7 +16,7 @@ from lib.asset_types import ASSET_SPECS, BUCKET_KEY, SHEET_KEY
 from lib.config.resolver import ConfigResolver
 from lib.db import async_session_factory
 from lib.db.base import DEFAULT_USER_ID
-from lib.path_safety import safe_exists
+from lib.media_storage import get_media_storage
 from lib.prompt_builders import append_product_fidelity_tail, append_video_negative_tail
 from lib.reference_video import assemble_shots_text, render_prompt_for_backend
 from lib.reference_video.ad_units import (
@@ -63,7 +63,7 @@ def _resolve_unit_references(
         if not sheet_rel:
             missing.append((rtype, rname))
             continue
-        path = project_path / sheet_rel
+        path = get_media_storage().materialize_project_file(project_path, sheet_rel)
         if not path.exists():
             missing.append((rtype, rname))
             continue
@@ -203,10 +203,14 @@ def _resolve_ad_unit_reference_entries(
         bucket = raw_bucket if isinstance(raw_bucket, dict) else {}
         item = bucket.get(rname)
         sheet_rel = item.get(SHEET_KEY[rtype]) if isinstance(item, dict) else None
-        if sheet_rel and safe_exists(project_path, sheet_rel):
+        if sheet_rel:
+            sheet_path = get_media_storage().materialize_project_file(project_path, sheet_rel)
+        else:
+            sheet_path = None
+        if sheet_path and sheet_path.exists():
             entries.append(
                 {
-                    "image": project_path / sheet_rel,
+                    "image": sheet_path,
                     "label": f"{ASSET_SPECS[rtype].label_zh}「{rname}」设计图",
                     "name": rname,
                     "kind": "asset",
@@ -491,6 +495,15 @@ async def _finalize_reference_video_unit(
     else:
         thumb_path.unlink(missing_ok=True)
         thumb_rel = None
+
+    sync_paths = [f"reference_videos/{resource_id}.mp4"]
+    history = versions.get_versions("reference_videos", resource_id)
+    records = history.get("versions") or []
+    if records and isinstance(records[-1].get("file"), str):
+        sync_paths.append(records[-1]["file"])
+    if thumb_rel:
+        sync_paths.append(thumb_rel)
+    await get_media_storage().sync_project_paths_async(project_path, sync_paths)
 
     def _update_unit_assets():
         pm = get_project_manager()

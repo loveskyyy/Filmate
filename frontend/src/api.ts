@@ -102,6 +102,7 @@ interface ImportErrorPayload {
   errors?: string[];
   warnings?: string[];
   conflict_project_name?: string;
+  cloud_overwrite_unsupported?: boolean;
   diagnostics?: unknown;
 }
 
@@ -255,13 +256,38 @@ function normalizeDiagnosticsBucket(value: unknown): { code: string; message: st
     }));
 }
 
-function normalizeImportFailureDiagnostics(value: unknown): ImportFailureDiagnostics {
+function importMessageDiagnostics(messages: string[], code: string) {
+  return messages.map((message) => ({ code, message }));
+}
+
+function normalizeImportFailureDiagnostics(
+  value: unknown,
+  errors: string[],
+  warnings: string[],
+  detail: string,
+): ImportFailureDiagnostics | undefined {
   const payload = (value && typeof value === "object") ? value as Record<string, unknown> : {};
-  return {
-    blocking: normalizeDiagnosticsBucket(payload.blocking),
-    auto_fixable: normalizeDiagnosticsBucket(payload.auto_fixable),
-    warnings: normalizeDiagnosticsBucket(payload.warnings),
+  const blocking = normalizeDiagnosticsBucket(payload.blocking);
+  const autoFixable = normalizeDiagnosticsBucket(payload.auto_fixable);
+  const normalizedWarnings = normalizeDiagnosticsBucket(payload.warnings);
+  const fallbackBlocking = importMessageDiagnostics(errors, "import_error");
+  const fallbackWarnings = importMessageDiagnostics(warnings, "import_warning");
+  const diagnostics = {
+    blocking: blocking.length > 0
+      ? blocking
+      : fallbackBlocking.length > 0
+        ? fallbackBlocking
+        : detail
+          ? [{ code: "import_error", message: detail }]
+          : [],
+    auto_fixable: autoFixable,
+    warnings: normalizedWarnings.length > 0 ? normalizedWarnings : fallbackWarnings,
   };
+  return diagnostics.blocking.length > 0
+    || diagnostics.auto_fixable.length > 0
+    || diagnostics.warnings.length > 0
+    ? diagnostics
+    : undefined;
 }
 
 function normalizeExportDiagnostics(value: unknown): ExportDiagnostics {
@@ -524,16 +550,29 @@ class API {
         errors?: string[];
         warnings?: string[];
         conflict_project_name?: string;
+        cloud_overwrite_unsupported?: boolean;
         diagnostics?: ImportFailureDiagnostics;
       };
       error.status = response.status;
       error.detail = typeof payload.detail === "string" ? payload.detail : "导入失败";
-      error.errors = Array.isArray(payload.errors) ? payload.errors : [];
-      error.warnings = Array.isArray(payload.warnings) ? payload.warnings : [];
+      error.errors = Array.isArray(payload.errors)
+        ? payload.errors.filter((value): value is string => typeof value === "string")
+        : [];
+      error.warnings = Array.isArray(payload.warnings)
+        ? payload.warnings.filter((value): value is string => typeof value === "string")
+        : [];
       if (typeof payload.conflict_project_name === "string") {
         error.conflict_project_name = payload.conflict_project_name;
       }
-      error.diagnostics = normalizeImportFailureDiagnostics(payload.diagnostics);
+      if (payload.cloud_overwrite_unsupported === true) {
+        error.cloud_overwrite_unsupported = true;
+      }
+      error.diagnostics = normalizeImportFailureDiagnostics(
+        payload.diagnostics,
+        error.errors,
+        error.warnings,
+        error.detail,
+      );
       throw error;
     }
 

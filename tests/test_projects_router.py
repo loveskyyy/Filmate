@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from lib.media_storage import MediaStorageError
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import projects
 
@@ -14,6 +15,7 @@ from server.routers import projects
 class _FakePM:
     def __init__(self, base: Path):
         self.base = base
+        self.projects_root = base
         self.project_data = {
             "ready": {
                 "title": "Ready",
@@ -274,6 +276,39 @@ class TestProjectsRouter:
 
             delete_ok = client.delete("/api/v1/projects/remove-me")
             assert delete_ok.status_code == 200
+
+    def test_delete_project_deletes_qiniu_prefix_before_local_directory(self, tmp_path, monkeypatch):
+        fake_pm = _FakePM(tmp_path)
+        calls: list[str] = []
+
+        class _Storage:
+            def delete_project_media(self, name: str) -> None:
+                assert fake_pm.get_project_path(name).exists()
+                calls.append(f"cloud:{name}")
+
+        monkeypatch.setattr(projects, "get_media_storage", lambda root: _Storage())
+        client = _client(monkeypatch, fake_pm, _FakeCalc())
+        with client:
+            response = client.delete("/api/v1/projects/remove-me")
+
+        assert response.status_code == 200
+        assert calls == ["cloud:remove-me"]
+        assert not (tmp_path / "remove-me").exists()
+
+    def test_delete_project_keeps_local_directory_when_qiniu_deletion_fails(self, tmp_path, monkeypatch):
+        fake_pm = _FakePM(tmp_path)
+
+        class _Storage:
+            def delete_project_media(self, _name: str) -> None:
+                raise MediaStorageError("七牛项目媒体删除失败")
+
+        monkeypatch.setattr(projects, "get_media_storage", lambda root: _Storage())
+        client = _client(monkeypatch, fake_pm, _FakeCalc())
+        with client:
+            response = client.delete("/api/v1/projects/remove-me")
+
+        assert response.status_code == 500
+        assert (tmp_path / "remove-me").exists()
 
     def test_create_persists_source_kind_and_defaults_novel(self, tmp_path, monkeypatch):
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())

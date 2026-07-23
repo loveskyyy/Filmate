@@ -80,6 +80,28 @@ def _client(monkeypatch):
 
 
 class TestVersionsRouter:
+    def test_restore_materializes_version_before_syncing_current_file(self, monkeypatch):
+        client, _ = _client(monkeypatch)
+        calls: list[tuple[str, tuple]] = []
+
+        class _Storage:
+            def materialize_project_file(self, project_path, relative_path):
+                calls.append(("materialize", (project_path, relative_path)))
+
+            def sync_project_paths(self, project_path, relative_paths):
+                calls.append(("sync", (project_path, list(relative_paths))))
+
+        monkeypatch.setattr(versions, "get_media_storage", lambda: _Storage())
+
+        with client:
+            response = client.post("/api/v1/projects/demo/versions/characters/Alice/restore/1")
+
+        assert response.status_code == 200
+        assert calls == [
+            ("materialize", (Path("/tmp/demo"), "versions/characters/Alice.png")),
+            ("sync", (Path("/tmp/demo"), ["characters/Alice.png"])),
+        ]
+
     def test_get_versions_and_restore(self, monkeypatch):
         client, fake_pm = _client(monkeypatch)
         with client:

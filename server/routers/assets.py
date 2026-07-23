@@ -17,6 +17,7 @@ from lib.asset_types import BUCKET_KEY, GLOBAL_LIBRARY_ASSET_TYPES, SHEET_KEY, v
 from lib.db import async_session_factory
 from lib.db.repositories.asset_repo import AssetRepository
 from lib.i18n import Translator
+from lib.media_storage import get_media_storage
 from lib.project_manager import ProjectManager
 from server.auth import CurrentUser
 
@@ -71,7 +72,9 @@ async def _save_upload(file: UploadFile, asset_type: str, _t: Translator) -> str
     target = root / f"{uid}{ext}"
     await asyncio.to_thread(target.write_bytes, data)
     # 存相对路径（相对 projects_root）
-    return f"_global_assets/{asset_type}/{uid}{ext}"
+    relative_path = f"_global_assets/{asset_type}/{uid}{ext}"
+    await get_media_storage(get_project_manager().projects_root).sync_global_paths_async([relative_path])
+    return relative_path
 
 
 def _delete_global_asset_file(rel_path: str) -> None:
@@ -298,7 +301,11 @@ async def from_project(
         try:
             project_dir = get_project_manager().get_project_path(req.project_name)
             ProjectManager._safe_subpath(project_dir, sheet_rel)
-            candidate = project_dir / sheet_rel
+            candidate = await asyncio.to_thread(
+                get_media_storage(get_project_manager().projects_root).materialize_project_file,
+                project_dir,
+                sheet_rel,
+            )
             if candidate.exists() and candidate.is_file():
                 source_sheet_path = candidate
         except (ValueError, FileNotFoundError):
@@ -328,6 +335,7 @@ async def from_project(
         target = root / f"{uid}{ext}"
         await asyncio.to_thread(shutil.copyfile, source_sheet_path, target)
         new_image_path = f"_global_assets/{req.resource_type}/{uid}{ext}"
+        await get_media_storage(get_project_manager().projects_root).sync_global_paths_async([new_image_path])
 
     # 6) 写 DB：失败路径清理拷贝文件
     try:
@@ -454,7 +462,10 @@ async def apply_to_project(
         copy_src: Path | None = None
         copy_dst: Path | None = None
         if a.image_path:
-            src = project_manager.projects_root / a.image_path
+            src = await asyncio.to_thread(
+                get_media_storage(project_manager.projects_root).materialize_global_file,
+                a.image_path,
+            )
             if src.exists() and src.is_file():
                 ext = src.suffix.lower() or ".png"
                 rel_sheet = f"{bucket_key}/{desired_name}{ext}"
@@ -500,6 +511,11 @@ async def apply_to_project(
 
     if plans:
         await asyncio.to_thread(_copy_all)
+        uploaded_sheets = [plan["target_sheet"] for plan in plans if isinstance(plan["target_sheet"], str)]
+        if uploaded_sheets:
+            await get_media_storage(project_manager.projects_root).sync_project_paths_async(
+                project_dir, uploaded_sheets
+            )
 
     # 6) 单次 update_project 把所有 bucket 变更一次性写回
     def _apply_all(data: dict) -> None:

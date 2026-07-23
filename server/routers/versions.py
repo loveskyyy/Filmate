@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 from lib.app_data_dir import app_data_dir
 from lib.i18n import Translator
+from lib.media_storage import get_media_storage
 from lib.project_change_hints import project_change_source
 from lib.project_manager import ProjectManager
 from lib.resource_paths import resource_relative_path
@@ -254,12 +255,18 @@ async def restore_version(
             project_path = get_project_manager().get_project_path(project_name)
             current_file, file_path = _resolve_resource_path(resource_type, resource_id, project_path, _t)
 
+            history = vm.get_versions(resource_type, resource_id)
+            target = next((item for item in history.get("versions", []) if item.get("version") == version), None)
+            if target and isinstance(target.get("file"), str):
+                get_media_storage().materialize_project_file(project_path, target["file"])
+
             result = vm.restore_version(
                 resource_type=resource_type,
                 resource_id=resource_id,
                 version=version,
                 current_file=current_file,
             )
+            get_media_storage().sync_project_paths(project_path, [file_path])
 
             _sync_metadata(resource_type, project_name, resource_id, file_path, project_path)
 

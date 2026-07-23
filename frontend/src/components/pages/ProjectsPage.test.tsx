@@ -328,4 +328,42 @@ describe("ProjectsPage", () => {
       expect(location.history?.at(-1)).toBe("/app/projects/demo-renamed");
     });
   });
+
+  it("removes overwrite after the cloud storage conflict response", async () => {
+    const conflictError = new Error("检测到项目编号冲突") as Error & {
+      status?: number;
+      conflict_project_name?: string;
+      cloud_overwrite_unsupported?: boolean;
+    };
+    conflictError.status = 409;
+    conflictError.conflict_project_name = "demo";
+
+    const cloudOverwriteError = new Error("云端媒体存储不支持覆盖导入") as Error & {
+      status?: number;
+      conflict_project_name?: string;
+      cloud_overwrite_unsupported?: boolean;
+    };
+    cloudOverwriteError.status = 409;
+    cloudOverwriteError.conflict_project_name = "demo";
+    cloudOverwriteError.cloud_overwrite_unsupported = true;
+
+    vi.spyOn(API, "listProjects").mockResolvedValue({ projects: [] });
+    vi.spyOn(API, "importProject")
+      .mockRejectedValueOnce(conflictError)
+      .mockRejectedValueOnce(cloudOverwriteError);
+
+    const { container } = renderPage();
+    await screen.findByText("新建项目");
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [new File(["zip"], "project.zip")] } });
+
+    expect(await screen.findByRole("button", { name: "覆盖现有项目" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "覆盖现有项目" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "覆盖现有项目" })).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "自动重命名导入" })).toBeInTheDocument();
+  });
 });

@@ -69,6 +69,7 @@ updates:
           - "Pillow"
           - "ffmpeg-python"
           - "pyjianyingdraft"
+          - "qiniu"
         update-types:
           - "minor"
           - "patch"

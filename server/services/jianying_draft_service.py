@@ -49,6 +49,7 @@ _SUBTITLE_TEXT_FIELDS: dict[str, str] = {
 # 故此处只列 drama。未注册且不在此集合的模式（未知脏值）不挂字幕轨。
 _SPAN_SUBTITLE_MODES: frozenset[str] = frozenset({"drama"})
 
+from lib.media_storage import get_media_storage
 from lib.path_safety import safe_resolve
 from lib.project_manager import ProjectManager, effective_mode
 from lib.reference_video.ad_units import ad_shots_by_id
@@ -163,6 +164,10 @@ class JianyingDraftService:
             if not video_clip:
                 continue
 
+            try:
+                get_media_storage(project_dir.parent).materialize_project_file(project_dir, video_clip)
+            except ValueError:
+                pass
             abs_path = safe_resolve(project_dir, video_clip)
             if abs_path is None:
                 logger.warning("video_clip 不可用（越界或文件不存在），已跳过: %s", video_clip)
@@ -172,6 +177,12 @@ class JianyingDraftService:
             # 不让单镜头脏数据把整次导出带崩（TextSegment 对非 str 序列化即抛错）
             subtitle_value = item.get(subtitle_field) if subtitle_field else None
 
+            narration_audio = assets.get("narration_audio")
+            if isinstance(narration_audio, str):
+                try:
+                    get_media_storage(project_dir.parent).materialize_project_file(project_dir, narration_audio)
+                except ValueError:
+                    pass
             clip: dict[str, Any] = {
                 "id": item.get(id_field, ""),
                 "duration_seconds": item.get("duration_seconds", 8),
@@ -179,7 +190,7 @@ class JianyingDraftService:
                 "abs_path": abs_path,
                 "subtitle_text": subtitle_value if isinstance(subtitle_value, str) else "",
                 "transition_to_next": item.get("transition_to_next", "cut"),
-                "narration_audio_abs": safe_resolve(project_dir, assets.get("narration_audio")),
+                "narration_audio_abs": safe_resolve(project_dir, narration_audio),
             }
             # drama：从场景 utterances 派生有序字幕 span（台词 + 画外音按真实先后，按语速估时长）
             if is_drama:
@@ -206,6 +217,10 @@ class JianyingDraftService:
             video_clip = assets.get("video_clip") if isinstance(assets, dict) else None
             if not video_clip:
                 continue
+            try:
+                get_media_storage(project_dir.parent).materialize_project_file(project_dir, video_clip)
+            except ValueError:
+                pass
             abs_path = safe_resolve(project_dir, video_clip)
             if abs_path is None:
                 logger.warning("video_clip 不可用（越界或文件不存在），已跳过: %s", video_clip)

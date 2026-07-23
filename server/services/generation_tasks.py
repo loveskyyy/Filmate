@@ -23,7 +23,7 @@ from lib.i18n import DEFAULT_LOCALE
 from lib.i18n import _ as i18n_translate
 from lib.image_backends.base import ImageCapabilityError
 from lib.media_generator import MediaGenerator
-from lib.path_safety import safe_exists
+from lib.media_storage import get_media_storage
 from lib.project_change_hints import emit_project_change_batch, project_change_source
 from lib.project_manager import ProjectManager
 from lib.prompt_builders import (
@@ -427,21 +427,21 @@ def _collect_sheet_paths(
         for char_name in item.get(char_field, []):
             sheet = characters.get(char_name, {}).get("character_sheet")
             if sheet and sheet not in seen:
-                path = project_path / sheet
+                path = get_media_storage().materialize_project_file(project_path, sheet)
                 if path.exists():
                     paths.append(path)
                     seen.add(sheet)
         for scene_name in item.get(scene_field, []):
             sheet = project_scenes.get(scene_name, {}).get("scene_sheet")
             if sheet and sheet not in seen:
-                path = project_path / sheet
+                path = get_media_storage().materialize_project_file(project_path, sheet)
                 if path.exists():
                     paths.append(path)
                     seen.add(sheet)
         for prop_name in item.get(prop_field, []):
             sheet = project_props.get(prop_name, {}).get("prop_sheet")
             if sheet and sheet not in seen:
-                path = project_path / sheet
+                path = get_media_storage().materialize_project_file(project_path, sheet)
                 if path.exists():
                     paths.append(path)
                     seen.add(sheet)
@@ -470,7 +470,7 @@ def _collect_reference_images(
     for extra in extra_reference_images or []:
         extra_path = Path(extra)
         if not extra_path.is_absolute():
-            extra_path = project_path / extra_path
+            extra_path = get_media_storage().materialize_project_file(project_path, extra_path)
         if extra_path.exists():
             reference_images.append(extra_path)
 
@@ -526,10 +526,14 @@ def collect_product_references_for_names(
             continue
         before = len(references)
         sheet = entry.get(spec.sheet_field)
-        if sheet and safe_exists(project_path, sheet):
+        if sheet:
+            sheet_path = get_media_storage().materialize_project_file(project_path, sheet)
+        else:
+            sheet_path = None
+        if sheet_path and sheet_path.exists():
             references.append(
                 {
-                    "image": project_path / sheet,
+                    "image": sheet_path,
                     "label": f"产品「{name}」标准多角度参考图",
                     "name": name,
                     "kind": "sheet",
@@ -973,10 +977,8 @@ async def execute_video_task(
     # 旧宫格项目 storyboard_image 指向 scene_{id}_first.png，仍可正常解析。
     assets = item.get("generated_assets", {})
     storyboard_rel = assets.get("storyboard_image") if isinstance(assets, dict) else None
-    if storyboard_rel:
-        storyboard_file = project_path / storyboard_rel
-    else:
-        storyboard_file = project_path / "storyboards" / f"scene_{resource_id}.png"
+    storyboard_rel = storyboard_rel or f"storyboards/scene_{resource_id}.png"
+    storyboard_file = get_media_storage().materialize_project_file(project_path, storyboard_rel)
     if not storyboard_file.exists():
         raise ValueError(f"storyboard not found: {storyboard_file.name}")
 
@@ -1062,7 +1064,7 @@ async def execute_video_task(
         service_tier=service_tier,
     )
 
-    return await _finalize_video_task(
+    return await _finalize_video_task(  # pyright: ignore[reportReturnType]
         project_name=project_name,
         script_file=script_file,
         project_path=project_path,
@@ -1117,6 +1119,9 @@ async def _finalize_video_task(
         )
     else:
         thumbnail_file.unlink(missing_ok=True)
+
+    if thumbnail_file.is_file():
+        await get_media_storage().sync_project_paths_async(project_path, [f"thumbnails/scene_{resource_id}.jpg"])
 
     created_at = await asyncio.to_thread(
         lambda: generator.versions.get_versions("videos", resource_id)["versions"][-1]["created_at"]
@@ -1215,7 +1220,16 @@ def _collect_product_reference_images(project: dict, project_path: Path, resourc
     if not isinstance(refs, list):
         return None
     # safe_exists 同时兜住脏数据（非字符串）、越出项目目录的绝对路径 / `..` 穿越与文件缺失
-    existing = [project_path / ref for ref in refs if safe_exists(project_path, ref)]
+    existing: list[Path] = []
+    for ref in refs:
+        if not isinstance(ref, str):
+            continue
+        try:
+            candidate = get_media_storage().materialize_project_file(project_path, ref)
+        except ValueError:
+            continue
+        if candidate.is_file():
+            existing.append(candidate)
     if refs and not existing:
         # 声明了原图却全部缺失：下游（sheet 生成 / 镜头保真注入）静默退化会丢失保真锚定，
         # 留观测痕迹便于诊断（不阻塞——文件缺失可能是归档迁移等正常历史原因）。
@@ -1384,7 +1398,7 @@ def _collect_grid_reference_images(
         for char_name in item.get(char_field, []):
             sheet = characters.get(char_name, {}).get("character_sheet")
             if sheet and sheet not in seen:
-                p = project_path / sheet
+                p = get_media_storage().materialize_project_file(project_path, sheet)
                 if p.exists():
                     paths.append(p)
                     seen.add(sheet)
@@ -1392,7 +1406,7 @@ def _collect_grid_reference_images(
         for scene_name in item.get(scene_field, []):
             sheet = project_scenes.get(scene_name, {}).get("scene_sheet")
             if sheet and sheet not in seen:
-                p = project_path / sheet
+                p = get_media_storage().materialize_project_file(project_path, sheet)
                 if p.exists():
                     paths.append(p)
                     seen.add(sheet)
@@ -1400,7 +1414,7 @@ def _collect_grid_reference_images(
         for prop_name in item.get(prop_field, []):
             sheet = project_props.get(prop_name, {}).get("prop_sheet")
             if sheet and sheet not in seen:
-                p = project_path / sheet
+                p = get_media_storage().materialize_project_file(project_path, sheet)
                 if p.exists():
                     paths.append(p)
                     seen.add(sheet)
@@ -1506,7 +1520,7 @@ async def execute_grid_task(
         storyboards_dir = project_path / "storyboards"
         storyboards_dir.mkdir(parents=True, exist_ok=True)
 
-        def _assign_cells():
+        def _assign_cells() -> list[str]:
             from lib.script_editor import resolve_items
 
             # batch_update_scene_assets 在任一 scene_id 未命中时整批 fail-loud 回滚——避免
@@ -1520,6 +1534,7 @@ async def execute_grid_task(
 
             asset_updates: list[tuple[str, str, Any]] = []
             missing_ids: list[str] = []
+            saved_paths: list[str] = []
 
             # 宫格已统一走普通图生视频（不再使用 first_last 模式），cell 仅作为
             # next_scene_id 的起始分镜图，文件名与普通分镜对齐为 scene_{id}.png。
@@ -1551,6 +1566,7 @@ async def execute_grid_task(
                     grid_id=resource_id,
                 )
                 frame.image_path = cell_rel
+                saved_paths.append(cell_rel)
                 asset_updates.append((frame.next_scene_id, "storyboard_image", cell_rel))
                 asset_updates.append((frame.next_scene_id, "grid_id", resource_id))
                 asset_updates.append((frame.next_scene_id, "grid_cell_index", frame.index))
@@ -1570,8 +1586,18 @@ async def execute_grid_task(
                     script_filename=script_file,
                     updates=asset_updates,
                 )
+            return saved_paths
 
-        await asyncio.to_thread(_assign_cells)
+        saved_cell_paths = await asyncio.to_thread(_assign_cells)
+        if saved_cell_paths:
+            version_paths: list[str] = []
+            for cell_rel in saved_cell_paths:
+                scene_id = Path(cell_rel).stem.removeprefix("scene_")
+                history = generator.versions.get_versions("storyboards", scene_id)
+                records = history.get("versions") or []
+                if records and isinstance(records[-1].get("file"), str):
+                    version_paths.append(records[-1]["file"])
+            await get_media_storage().sync_project_paths_async(project_path, [*saved_cell_paths, *version_paths])
 
         # h) Set status to completed
         grid.status = "completed"

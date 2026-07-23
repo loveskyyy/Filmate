@@ -15,7 +15,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Body, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 
 from lib.app_data_dir import app_data_dir
 from lib.asset_types import GLOBAL_LIBRARY_ASSET_TYPES
@@ -27,6 +27,7 @@ from lib.episode_paths import (
 )
 from lib.i18n import Translator
 from lib.image_utils import normalize_uploaded_image, validate_image_bytes
+from lib.media_storage import get_media_storage
 from lib.project_change_hints import emit_project_change_batch, project_change_source
 from lib.project_manager import ProjectManager, effective_mode
 from lib.source_loader import (
@@ -78,18 +79,26 @@ async def serve_project_file(project_name: str, path: str, request: Request, _t:
             project_dir = get_project_manager().get_project_path(project_name)
             file_path = project_dir / path
 
-            if not file_path.exists():
-                raise HTTPException(status_code=404, detail=_t("file_not_found", path=path))
-
             # 安全检查：确保路径在项目目录内
             try:
                 file_path.resolve().relative_to(project_dir.resolve())
             except ValueError:
                 raise HTTPException(status_code=403, detail=_t("forbidden_access"))
 
-            return file_path
+            return project_dir, file_path
 
-        file_path = await asyncio.to_thread(_sync)
+        project_dir, file_path = await asyncio.to_thread(_sync)
+
+        storage = get_media_storage()
+        if storage.enabled and storage.is_media_relative_path(path):
+            return RedirectResponse(
+                storage.signed_project_url(project_name, path),
+                status_code=307,
+                headers={"Cache-Control": "private, no-store"},
+            )
+
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail=_t("file_not_found", path=path))
 
         # 内容寻址缓存：带 ?v= 参数或 versions/ 路径时设 immutable
         headers = {}
@@ -111,8 +120,6 @@ async def serve_global_asset(asset_type: str, filename: str, _t: Translator):
 
     root = get_project_manager().get_global_assets_root()
     path = root / asset_type / filename
-    if not path.exists() or not path.is_file():
-        raise HTTPException(status_code=404, detail=_t("file_not_found", path=filename))
 
     # 防御性检查：即使 filename 通过了字符串校验，也要确保解析后的路径仍在 root 之内
     # （防御 symlink / URL 编码等边界场景）
@@ -120,6 +127,18 @@ async def serve_global_asset(asset_type: str, filename: str, _t: Translator):
         path.resolve().relative_to(root.resolve())
     except ValueError:
         raise HTTPException(status_code=403, detail=_t("forbidden_access"))
+
+    relative_path = f"_global_assets/{asset_type}/{filename}"
+    storage = get_media_storage()
+    if storage.enabled:
+        return RedirectResponse(
+            storage.signed_global_url(relative_path),
+            status_code=307,
+            headers={"Cache-Control": "private, no-store"},
+        )
+
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail=_t("file_not_found", path=filename))
 
     return FileResponse(str(path))
 
@@ -273,6 +292,10 @@ async def upload_file(
                 relative_path = f"products/refs/{filename}"
             else:
                 relative_path = f"{upload_type}/{filename}"
+
+            # 先确认对象存储中的 current 文件可读取，再写项目元数据，避免页面引用
+            # 一个尚未上传成功的相对路径。
+            get_media_storage().sync_project_paths(project_dir, [relative_path])
 
             if upload_type == "character" and name:
                 try:
@@ -917,9 +940,9 @@ async def upload_style_image(project_name: str, _user: CurrentUser, _t: Translat
             with open(output_path, "wb") as f:
                 f.write(content_norm)
 
-            return output_path, style_filename
+            return project_dir, output_path, style_filename
 
-        output_path, style_filename = await asyncio.to_thread(_sync_prepare)
+        project_dir, output_path, style_filename = await asyncio.to_thread(_sync_prepare)
 
         # 调用 TextGenerator 分析风格（自动追踪用量）
         from lib.text_backends.base import ImageInput, TextGenerationRequest, TextTaskType
@@ -932,6 +955,8 @@ async def upload_style_image(project_name: str, _user: CurrentUser, _t: Translat
             project_name=project_name,
         )
         style_description = result.text
+
+        await get_media_storage().sync_project_paths_async(project_dir, [style_filename])
 
         def _sync_save():
             # 更新 project.json：整段 RMW 在单一 _project_lock 内完成，避免覆盖并发写入的其它字段

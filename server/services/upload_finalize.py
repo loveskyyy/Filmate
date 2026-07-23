@@ -11,6 +11,7 @@ import uuid
 from pathlib import Path
 from typing import BinaryIO, Literal
 
+from lib.media_storage import get_media_storage
 from lib.thumbnail import extract_video_thumbnail
 from lib.version_manager import VersionManager
 from server.services.generation_tasks import get_project_manager
@@ -160,7 +161,13 @@ async def finalize_shot_storyboard_upload(
 
 
 async def finalize_shot_video_upload(
-    *, project_name: str, script_file: str, shot_id: str, project_path: Path, video_rel: str
+    *,
+    project_name: str,
+    script_file: str,
+    shot_id: str,
+    project_path: Path,
+    video_rel: str,
+    versions: VersionManager,
 ) -> None:
     """镜头视频上传后的 finalize：抽缩略图 + 单次锁内回写 video_clip / video_uri / video_thumbnail。
 
@@ -173,6 +180,15 @@ async def finalize_shot_video_upload(
     else:
         thumbnail_file.unlink(missing_ok=True)
         thumb_rel = None
+
+    sync_paths = [video_rel]
+    history = versions.get_versions("videos", shot_id)
+    records = history.get("versions") or []
+    if records and isinstance(records[-1].get("file"), str):
+        sync_paths.append(records[-1]["file"])
+    if thumb_rel:
+        sync_paths.append(thumb_rel)
+    await get_media_storage().sync_project_paths_async(project_path, sync_paths)
 
     await asyncio.to_thread(
         get_project_manager().batch_update_scene_assets,

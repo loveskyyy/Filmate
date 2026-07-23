@@ -58,6 +58,57 @@ def _client(monkeypatch, tmp_path):
 
 
 class TestFilesRouter:
+    def test_media_file_redirects_to_private_qiniu_url(self, tmp_path, monkeypatch):
+        client, pm = _client(monkeypatch, tmp_path)
+
+        class _Storage:
+            enabled = True
+
+            @staticmethod
+            def is_media_relative_path(path):
+                return path.endswith(".mp4")
+
+            @staticmethod
+            def signed_project_url(project_name, path):
+                return f"https://media.example.com/projects/{project_name}/{path}?private=1"
+
+        monkeypatch.setattr(files, "get_media_storage", lambda: _Storage())
+        project_path = pm.get_project_path("demo")
+        (project_path / "videos").mkdir(exist_ok=True)
+        (project_path / "videos" / "scene.mp4").write_bytes(b"video")
+
+        with client:
+            response = client.get("/api/v1/files/demo/videos/scene.mp4", follow_redirects=False)
+
+        assert response.status_code == 307
+        assert response.headers["location"] == "https://media.example.com/projects/demo/videos/scene.mp4?private=1"
+        assert response.headers["cache-control"] == "private, no-store"
+
+    def test_global_media_redirects_to_private_qiniu_url(self, tmp_path, monkeypatch):
+        client, pm = _client(monkeypatch, tmp_path)
+
+        class _Storage:
+            enabled = True
+
+            @staticmethod
+            def signed_global_url(path):
+                return f"https://media.example.com/projects/{path}?private=1"
+
+        monkeypatch.setattr(files, "get_media_storage", lambda: _Storage())
+        global_image = pm.get_global_assets_root() / "character" / "alice.png"
+        global_image.parent.mkdir(parents=True, exist_ok=True)
+        global_image.write_bytes(b"image")
+
+        with client:
+            response = client.get("/api/v1/global-assets/character/alice.png", follow_redirects=False)
+
+        assert response.status_code == 307
+        assert (
+            response.headers["location"]
+            == "https://media.example.com/projects/_global_assets/character/alice.png?private=1"
+        )
+        assert response.headers["cache-control"] == "private, no-store"
+
     def test_source_and_file_endpoints(self, tmp_path, monkeypatch):
         client, _ = _client(monkeypatch, tmp_path)
 
