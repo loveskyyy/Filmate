@@ -164,7 +164,7 @@ export function ShotList({
   return (
     <div
       style={{
-        borderRight: "1px solid oklch(0.82 0.16 200 / 0.14)",
+        borderRight: "1px solid oklch(0.75 0.18 42 / 0.14)",
         background: "oklch(0.09 0.007 240 / 0.95)",
       }}
       className="flex h-full min-w-0 flex-col"
@@ -180,8 +180,8 @@ export function ShotList({
           className="num rounded-[3px] px-1.5 py-px text-[9.5px] font-semibold"
           style={{
             color: "var(--color-accent-2)",
-            background: "oklch(0.76 0.09 200 / 0.12)",
-            border: "1px solid oklch(0.76 0.09 200 / 0.15)",
+            background: "oklch(0.75 0.18 42 / 0.12)",
+            border: "1px solid oklch(0.75 0.18 42 / 0.15)",
           }}
         >
           {filtered.length}
@@ -214,7 +214,7 @@ export function ShotList({
           className="flex items-center gap-1.5 rounded-lg px-2.5 py-2"
           style={{
             background: "oklch(0.13 0.010 240 / 0.70)",
-            border: "1px solid oklch(0.82 0.16 200 / 0.10)",
+            border: "1px solid oklch(0.75 0.18 42 / 0.10)",
           }}
         >
           <Search

@@ -32,8 +32,8 @@ export function PhaseStepper({ currentPhase }: PhaseStepperProps) {
                   isActive
                     ? {
                         color: "var(--color-text)",
-                        background: "oklch(0.76 0.09 200 / 0.18)",
-                        border: "1px solid oklch(0.76 0.09 200 / 0.35)",
+                        background: "oklch(0.75 0.18 42 / 0.18)",
+                        border: "1px solid oklch(0.75 0.18 42 / 0.35)",
                         boxShadow: "0 0 16px -4px var(--color-accent-glow)",
                       }
                     : isPast
@@ -61,14 +61,14 @@ export function PhaseStepper({ currentPhase }: PhaseStepperProps) {
                         }
                       : isPast
                       ? {
-                          background: "oklch(0.76 0.09 200 / 0.25)",
+                          background: "oklch(0.75 0.18 42 / 0.25)",
                           color: "oklch(0.65 0.08 200)",
-                          border: "1px solid oklch(0.76 0.09 200 / 0.20)",
+                          border: "1px solid oklch(0.75 0.18 42 / 0.20)",
                         }
                       : {
-                          background: "oklch(0.16 0.010 240)",
+                          background: "oklch(0.09 0.004 240)",
                           color: "oklch(0.38 0.008 240)",
-                          border: "1px solid oklch(0.82 0.16 200 / 0.08)",
+                          border: "1px solid oklch(0.75 0.18 42 / 0.08)",
                         }
                   }
                 >
@@ -86,10 +86,10 @@ export function PhaseStepper({ currentPhase }: PhaseStepperProps) {
                   className="h-px w-5 shrink-0"
                   style={{
                     background: isPast
-                      ? "linear-gradient(90deg, oklch(0.76 0.09 200 / 0.40), oklch(0.76 0.09 200 / 0.20))"
+                      ? "linear-gradient(90deg, oklch(0.75 0.18 42 / 0.40), oklch(0.75 0.18 42 / 0.20))"
                       : isActive
-                      ? "linear-gradient(90deg, oklch(0.76 0.09 200 / 0.30), oklch(0.82 0.16 200 / 0.08))"
-                      : "oklch(0.82 0.16 200 / 0.08)",
+                      ? "linear-gradient(90deg, oklch(0.75 0.18 42 / 0.30), oklch(0.75 0.18 42 / 0.08))"
+                      : "oklch(0.75 0.18 42 / 0.08)",
                   }}
                 />
               )}

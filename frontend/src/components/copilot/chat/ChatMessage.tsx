@@ -42,7 +42,7 @@ export function ChatMessage({ message, streaming }: ChatMessageProps) {
         marginLeft: "auto",
         maxWidth: "85%",
         background:
-          "linear-gradient(180deg, var(--color-accent-dim), oklch(0.76 0.09 200 / 0.06))",
+          "linear-gradient(180deg, var(--color-accent-dim), oklch(0.75 0.18 42 / 0.06))",
         border: "1px solid var(--color-accent-soft)",
       }
     : isSystem

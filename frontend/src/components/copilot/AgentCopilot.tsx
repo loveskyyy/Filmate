@@ -60,7 +60,7 @@ function SessionSelector({
         className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11.5px] transition-colors focus-ring"
         style={{ color: "var(--color-text-3)" }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.background = "oklch(0.82 0.16 200 / 0.10)";
+          e.currentTarget.style.background = "oklch(0.75 0.18 42 / 0.10)";
           e.currentTarget.style.color = "var(--color-text)";
         }}
         onMouseLeave={(e) => {
@@ -102,7 +102,7 @@ function SessionSelector({
                   }
                   onMouseEnter={(e) => {
                     if (!isActive)
-                      e.currentTarget.style.background = "oklch(0.82 0.16 200 / 0.08)";
+                      e.currentTarget.style.background = "oklch(0.75 0.18 42 / 0.08)";
                   }}
                   onMouseLeave={(e) => {
                     if (!isActive) e.currentTarget.style.background = "transparent";
@@ -394,7 +394,7 @@ export function AgentCopilot() {
       {/* Header */}
       <div
         className="flex h-12 items-center gap-2 px-3"
-        style={{ borderBottom: "1px solid oklch(0.82 0.16 200 / 0.10)" }}
+        style={{ borderBottom: "1px solid oklch(0.75 0.18 42 / 0.10)" }}
       >
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <button
@@ -403,7 +403,7 @@ export function AgentCopilot() {
             className="shrink-0 rounded p-1 transition-colors focus-ring"
             style={{ color: "var(--color-text-3)" }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "oklch(0.82 0.16 200 / 0.10)";
+              e.currentTarget.style.background = "oklch(0.75 0.18 42 / 0.10)";
               e.currentTarget.style.color = "var(--color-text)";
             }}
             onMouseLeave={(e) => {
@@ -451,7 +451,7 @@ export function AgentCopilot() {
             className="rounded p-1 transition-colors focus-ring"
             style={{ color: "var(--color-text-3)" }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "oklch(0.82 0.16 200 / 0.10)";
+              e.currentTarget.style.background = "oklch(0.75 0.18 42 / 0.10)";
               e.currentTarget.style.color = "var(--color-text)";
             }}
             onMouseLeave={(e) => {
@@ -477,7 +477,7 @@ export function AgentCopilot() {
               className="mb-3 grid h-12 w-12 place-items-center rounded-2xl"
               style={{
                 background:
-                  "linear-gradient(135deg, var(--color-accent-dim), oklch(0.20 0.014 242 / 0.65))",
+                  "linear-gradient(135deg, var(--color-accent-dim), oklch(0.10 0.005 240 / 0.65))",
                 border: "1px solid var(--color-accent-soft)",
                 boxShadow: "0 0 24px -8px var(--color-accent-glow)",
               }}

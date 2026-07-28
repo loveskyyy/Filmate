@@ -174,7 +174,7 @@ export function MediaCard({
             className="flex h-full w-full flex-col items-center justify-center gap-2 rounded-[10px]"
             style={{
               border: "1px dashed var(--color-hairline)",
-              background: "oklch(0.18 0.010 240 / 0.4)",
+              background: "oklch(0.10 0.005 240 / 0.4)",
               color: "var(--color-text-4)",
             }}
           >

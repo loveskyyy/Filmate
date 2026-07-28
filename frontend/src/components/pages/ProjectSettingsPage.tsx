@@ -58,7 +58,7 @@ function SectionCard({ kicker, title, description, children, footer }: SectionCa
       className="overflow-hidden rounded-[12px] border border-hairline"
       style={{
         background:
-          "linear-gradient(180deg, oklch(0.20 0.014 242 / 0.60), oklch(0.16 0.012 238 / 0.55))",
+          "linear-gradient(180deg, oklch(0.10 0.005 240 / 0.60), oklch(0.16 0.012 238 / 0.55))",
         boxShadow:
           "inset 0 1px 0 oklch(1 0 0 / 0.03), 0 18px 40px -28px oklch(0 0 0 / 0.5)",
       }}
@@ -448,7 +448,7 @@ export function ProjectSettingsPage() {
         className="sticky top-0 z-30 shrink-0"
         style={{
           background:
-            "linear-gradient(180deg, oklch(0.18 0.014 242 / 0.60), oklch(0.14 0.012 238 / 0.50))",
+            "linear-gradient(180deg, oklch(0.10 0.005 240 / 0.60), oklch(0.14 0.012 238 / 0.50))",
           backdropFilter: "blur(28px) saturate(1.5)",
           WebkitBackdropFilter: "blur(28px) saturate(1.5)",
           borderBottom: "1px solid var(--color-hairline)",

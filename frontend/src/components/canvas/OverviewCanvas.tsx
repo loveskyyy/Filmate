@@ -20,16 +20,14 @@ interface OverviewCanvasProps {
   projectData: ProjectData | null;
 }
 
-const CARD_BG =
-  "linear-gradient(180deg, oklch(0.20 0.014 242 / 0.60), oklch(0.17 0.012 240 / 0.45))";
+const CARD_BG = "oklch(0.07 0.004 240)";
 const CARD_SHADOW =
-  "inset 0 1px 0 oklch(1 0 0 / 0.05), 0 8px 24px -10px oklch(0 0 0 / 0.55), 0 0 0 1px oklch(0.82 0.16 200 / 0.06)";
+  "0 1px 0 oklch(1 0 0 / 0.06), 0 12px 32px -12px oklch(0 0 0 / 0.70)";
 const FIELD_STYLE: React.CSSProperties = {
-  background:
-    "linear-gradient(180deg, oklch(0.18 0.014 242 / 0.65), oklch(0.16 0.012 240 / 0.50))",
-  border: "1px solid oklch(0.82 0.16 200 / 0.12)",
+  background: "oklch(0.05 0.002 240)",
+  border: "1px solid oklch(1 0 0 / 0.10)",
   color: "var(--color-text)",
-  boxShadow: "inset 0 1px 2px oklch(0 0 0 / 0.25)",
+  boxShadow: "inset 0 1px 2px oklch(0 0 0 / 0.30)",
 };
 
 interface OverviewDraft {
@@ -227,35 +225,30 @@ export function OverviewCanvas({ projectName, projectData }: OverviewCanvasProps
     !(projectData.brief ?? "").trim();
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-5xl space-y-6 px-8 py-8">
-        {/* Project title — 全宽标题区域 + 装饰线 */}
+    <div className="h-full overflow-y-auto" style={{ background: "oklch(0.04 0.002 240)" }}>
+      <div className="mx-auto max-w-5xl space-y-5 px-8 py-8">
+        {/* Project title — 全宽标题区域 */}
         <header
-          className="relative overflow-hidden rounded-2xl px-7 py-6"
+          className="relative overflow-hidden px-0 py-6"
           style={{
-            background: "oklch(0.11 0.010 240 / 0.80)",
-            border: "1px solid oklch(0.82 0.16 200 / 0.14)",
-            boxShadow: "0 8px 32px -16px oklch(0 0 0 / 0.5)",
+            borderBottom: "1px solid oklch(1 0 0 / 0.08)",
           }}
         >
-          {/* 顶部装饰线 */}
-          <div
-            aria-hidden
-            className="absolute top-0 left-0 right-0 h-[2px]"
-            style={{ background: "linear-gradient(90deg, transparent, var(--color-accent), var(--color-accent-2), transparent)" }}
-          />
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
+          <div className="flex items-end justify-between gap-4">
+            <div className="flex items-center gap-5">
               <span
                 aria-hidden
-                className="h-10 w-[3px] rounded-full shrink-0"
                 style={{
-                  background: "linear-gradient(180deg, var(--color-accent-2), var(--color-accent))",
-                  boxShadow: "0 0 16px var(--color-accent-glow)",
+                  display: "block",
+                  width: 4,
+                  height: 48,
+                  background: "var(--color-accent)",
+                  borderRadius: 2,
+                  flexShrink: 0,
                 }}
               />
               <div>
-                <div className="font-mono text-[9.5px] font-bold uppercase tracking-[0.18em] text-text-4 mb-1">
+                <div className="font-mono text-[9px] font-bold uppercase tracking-[0.22em] mb-2" style={{ color: "var(--color-accent)" }}>
                   {projectData.content_mode === "narration"
                     ? t("narration_visuals_mode")
                     : projectData.content_mode === "ad"
@@ -263,8 +256,8 @@ export function OverviewCanvas({ projectName, projectData }: OverviewCanvasProps
                       : t("drama_animation_mode")}
                 </div>
                 <h1
-                  className="display-serif text-[34px] font-semibold tracking-tight"
-                  style={{ color: "var(--color-text)", letterSpacing: "-0.02em" }}
+                  className="text-[40px] font-black tracking-tight"
+                  style={{ color: "var(--color-text)", letterSpacing: "-0.03em", lineHeight: 1.1 }}
                 >
                   {projectData.title}
                 </h1>
@@ -447,8 +440,8 @@ export function OverviewCanvas({ projectName, projectData }: OverviewCanvasProps
                       <span
                         className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5"
                         style={{
-                          background: "oklch(0.18 0.014 242 / 0.65)",
-                          border: "1px solid oklch(0.82 0.16 200 / 0.12)",
+                          background: "oklch(0.10 0.005 240 / 0.65)",
+                          border: "1px solid oklch(0.75 0.18 42 / 0.12)",
                         }}
                       >
                         <span style={{ color: "var(--color-text-4)" }}>{t("theme_prefix")}</span>
@@ -544,7 +537,7 @@ export function OverviewCanvas({ projectName, projectData }: OverviewCanvasProps
                       </div>
                       <div
                         className="relative h-1.5 overflow-hidden rounded-full"
-                        style={{ background: "oklch(0.14 0.012 240 / 0.75)" }}
+                        style={{ background: "oklch(0.08 0.004 240 / 0.75)" }}
                         role="progressbar"
                         aria-label={t("progress_aria_label", { label: labels[key] })}
                         aria-valuenow={pct}
@@ -666,33 +659,37 @@ export function OverviewCanvas({ projectName, projectData }: OverviewCanvasProps
 
             {/* Episodes */}
             <section>
-              <div className="mb-4 flex items-center gap-3">
+              <div className="mb-5 flex items-center gap-4">
                 <span
                   aria-hidden
-                  className="h-5 w-[3px] rounded-full shrink-0"
                   style={{
-                    background: "linear-gradient(180deg, var(--color-accent-2), var(--color-accent))",
-                    boxShadow: "0 0 10px var(--color-accent-glow)",
+                    display: "block",
+                    width: 3,
+                    height: 18,
+                    background: "var(--color-accent)",
+                    borderRadius: 2,
+                    flexShrink: 0,
                   }}
                 />
                 <h3
-                  className="display-serif text-[18px] font-semibold tracking-tight"
-                  style={{ color: "var(--color-text)", letterSpacing: "-0.01em" }}
+                  className="text-[13px] font-bold uppercase tracking-[0.14em]"
+                  style={{ color: "var(--color-text-3)" }}
                 >
                   {isAd ? t("ad_video_section_title") : t("episodes_title")}
                 </h3>
                 {!isAd && (projectData.episodes?.length ?? 0) > 0 && (
                   <span
-                    className="num rounded-[4px] px-2 py-0.5 text-[10.5px] font-semibold"
+                    className="num rounded px-2 py-0.5 text-[10px] font-bold"
                     style={{
-                      color: "var(--color-accent-2)",
-                      background: "oklch(0.76 0.09 200 / 0.12)",
-                      border: "1px solid oklch(0.76 0.09 200 / 0.20)",
+                      color: "var(--color-accent)",
+                      background: "oklch(0.75 0.18 42 / 0.10)",
+                      border: "1px solid oklch(0.75 0.18 42 / 0.20)",
                     }}
                   >
                     {projectData.episodes?.length ?? 0}
                   </span>
                 )}
+                <span aria-hidden className="h-px flex-1" style={{ background: "oklch(1 0 0 / 0.06)" }} />
               </div>
 
               {(projectData.episodes?.length ?? 0) === 0 ? (
@@ -706,20 +703,19 @@ export function OverviewCanvas({ projectName, projectData }: OverviewCanvasProps
                     return (
                       <div
                         key={ep.episode}
-                        className="num flex flex-wrap items-center gap-3 rounded-xl px-5 py-3.5 text-[12px] transition-colors"
+                        className="num flex flex-wrap items-center gap-3 rounded-none px-5 py-4 text-[12px] transition-colors"
                         style={{
-                          border: "1px solid oklch(0.82 0.16 200 / 0.12)",
-                          background: "oklch(0.12 0.010 240 / 0.70)",
-                          boxShadow: "0 2px 12px -6px oklch(0 0 0 / 0.4)",
+                          borderBottom: "1px solid oklch(1 0 0 / 0.07)",
+                          background: "transparent",
                         }}
                       >
                         {!isAd && (
                           <span
-                            className="rounded px-1.5 py-0.5 text-[10.5px] font-bold"
+                            className="font-mono rounded px-1.5 py-0.5 text-[10px] font-bold"
                             style={{
-                              color: "var(--color-accent-2)",
-                              background: "var(--color-accent-dim)",
-                              border: "1px solid var(--color-accent-soft)",
+                              color: "var(--color-accent)",
+                              background: "oklch(0.75 0.18 42 / 0.10)",
+                              border: "1px solid oklch(0.75 0.18 42 / 0.25)",
                             }}
                           >
                             E{ep.episode}

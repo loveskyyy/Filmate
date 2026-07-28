@@ -83,9 +83,9 @@ const PHASE_TONE: Record<Phase, PhaseTone> = {
     glow: "oklch(0.80 0.12 75 / 0.35)",
   },
   production: {
-    dot: "oklch(0.76 0.09 200)",
+    dot: "oklch(0.75 0.18 42)",
     text: "oklch(0.88 0.05 200)",
-    glow: "oklch(0.76 0.09 200 / 0.40)",
+    glow: "oklch(0.75 0.18 42 / 0.40)",
   },
   completed: {
     dot: "oklch(0.78 0.10 155)",
@@ -305,7 +305,7 @@ function gradientProgressStyles(variant: "accent" | "good"): {
   trackStyle: CSSProperties;
   barStyle: CSSProperties;
 } {
-  const trackStyle: CSSProperties = { background: "oklch(0.16 0.010 240)" };
+  const trackStyle: CSSProperties = { background: "oklch(0.09 0.004 240)" };
   if (variant === "good") {
     return {
       trackStyle,
@@ -377,44 +377,50 @@ function ProjectCard({ project, styleLabel, phaseLabels, t, onDelete }: ProjectC
 
   return (
     <article
-      className="group relative overflow-hidden rounded-[16px] transition-[transform,border-color,box-shadow] duration-200 motion-safe:hover:-translate-y-0.5"
+      className="group relative overflow-hidden transition-[border-color,box-shadow] duration-200"
       style={{
-        border: "1px solid oklch(0.82 0.16 200 / 0.12)",
-        background: "oklch(0.12 0.010 240 / 0.80)",
-        boxShadow: "0 4px 24px -8px oklch(0 0 0 / 0.5)",
+        border: "1px solid oklch(1 0 0 / 0.07)",
+        borderLeft: "3px solid oklch(1 0 0 / 0.06)",
+        background: "oklch(0.07 0.004 240)",
+        boxShadow: "0 2px 12px -4px oklch(0 0 0 / 0.60)",
       }}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.82 0.16 200 / 0.35)";
-        (e.currentTarget as HTMLElement).style.boxShadow = "0 16px 48px -16px oklch(0 0 0 / 0.7), 0 0 32px -16px var(--color-accent-glow)";
+        (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.75 0.18 42 / 0.30)";
+        (e.currentTarget as HTMLElement).style.borderLeftColor = "oklch(0.75 0.18 42)";
+        (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 32px -8px oklch(0 0 0 / 0.80), 4px 0 24px -12px oklch(0.75 0.18 42 / 0.40)";
+        (e.currentTarget as HTMLElement).style.background = "oklch(0.09 0.005 240)";
       }}
       onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.82 0.16 200 / 0.12)";
-        (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 24px -8px oklch(0 0 0 / 0.5)";
+        (e.currentTarget as HTMLElement).style.borderColor = "oklch(1 0 0 / 0.07)";
+        (e.currentTarget as HTMLElement).style.borderLeftColor = "oklch(1 0 0 / 0.06)";
+        (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 12px -4px oklch(0 0 0 / 0.60)";
+        (e.currentTarget as HTMLElement).style.background = "oklch(0.07 0.004 240)";
       }}
     >
       <Link
         href={`/app/projects/${project.name}`}
         className="flex w-full text-left text-text no-underline outline-none"
-        aria-label={`${projectDisplayName} · ${styleLabel}${phaseLabel ? ` · ${phaseLabel}` : ""}`}
+        aria-label={`${projectDisplayName} \u00b7 ${styleLabel}${phaseLabel ? ` \u00b7 ${phaseLabel}` : ""}`}
       >
-        {/* 左侧海报 - 固定宽度 */}
-        <div className="shrink-0" style={{ width: 140 }}>
+        {/* 左侧海报 - 加大宽度 */}
+        <div className="shrink-0" style={{ width: 160 }}>
           <div
             className="h-full"
-            style={{ minHeight: 120 }}
+            style={{ minHeight: 130 }}
           >
             <Poster project={project} styleLabel={styleLabel} />
           </div>
         </div>
 
         {/* 右侧信息区 */}
-        <div className="flex min-w-0 flex-1 flex-col px-4 py-3.5">
-          <div className="mb-1 flex items-start justify-between gap-2">
-            <h3 className="truncate text-[16px] font-semibold tracking-tight text-text leading-tight">
+        <div className="flex min-w-0 flex-1 flex-col px-5 py-4">
+          <div className="mb-1.5 flex items-start justify-between gap-2">
+            <h3 className="truncate text-[17px] font-bold tracking-tight text-text leading-tight">
               {projectDisplayName}
             </h3>
             <span
-              className="shrink-0 font-mono text-[9px] uppercase tracking-[0.08em] text-text-3 mt-0.5"
+              className="shrink-0 font-mono text-[9px] uppercase tracking-[0.10em] mt-0.5"
+              style={{ color: "var(--color-text-4)" }}
               title={styleLabel}
             >
               {styleLabel}
@@ -428,8 +434,11 @@ function ProjectCard({ project, styleLabel, phaseLabels, t, onDelete }: ProjectC
           <EpisodeStrip summary={episodes} />
 
           <div
-            className="mt-3 grid grid-cols-4 overflow-hidden rounded-[7px] border border-hairline-soft"
-            style={{ background: "oklch(0.13 0.012 240 / 0.55)" }}
+            className="mt-3 grid grid-cols-4 overflow-hidden"
+            style={{
+              background: "oklch(0.05 0.002 240)",
+              border: "1px solid oklch(1 0 0 / 0.08)",
+            }}
           >
             {(
               [
@@ -560,18 +569,26 @@ function NowEditingCard({ project, styleLabel, phaseLabels, t }: NowEditingCardP
 
   return (
     <article
-      className="relative overflow-hidden rounded-[20px]"
+      className="relative overflow-hidden"
       style={{
-        border: "1px solid oklch(0.82 0.16 200 / 0.20)",
-        background: "oklch(0.11 0.010 240 / 0.90)",
-        boxShadow: "0 32px 80px -32px oklch(0 0 0 / 0.8), 0 0 0 1px oklch(0.82 0.16 200 / 0.08), inset 0 1px 0 oklch(1 0 0 / 0.04)",
+        border: "1px solid oklch(1 0 0 / 0.10)",
+        borderTop: "3px solid var(--color-accent)",
+        background: "oklch(0.07 0.004 240)",
+        boxShadow: "0 24px 60px -20px oklch(0 0 0 / 0.90), 0 0 40px -20px oklch(0.75 0.18 42 / 0.15)",
       }}
     >
-      {/* 顶部青蓝装饰线 */}
+      {/* 顶部橙红光晕 */}
       <div
         aria-hidden
-        className="absolute top-0 left-0 right-0 h-[2px]"
-        style={{ background: "linear-gradient(90deg, transparent, var(--color-accent), var(--color-accent-2), transparent)" }}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 200,
+          background: "linear-gradient(180deg, oklch(0.75 0.18 42 / 0.06), transparent)",
+          pointerEvents: "none",
+        }}
       />
       <div
         className="grid"
@@ -640,11 +657,11 @@ function NowEditingCard({ project, styleLabel, phaseLabels, t }: NowEditingCardP
         </div>
 
         <div
-          className="relative grid overflow-hidden rounded-[8px]"
+          className="relative grid overflow-hidden"
           style={{
             gridTemplateColumns: "1fr 1fr 1fr",
             gap: 1,
-            background: "var(--color-hairline-soft)",
+            background: "oklch(1 0 0 / 0.04)",
           }}
         >
           {[
@@ -670,7 +687,7 @@ function NowEditingCard({ project, styleLabel, phaseLabels, t }: NowEditingCardP
             <div
               key={cell.k}
               className="px-3.5 py-3"
-              style={{ background: "oklch(0.13 0.012 240 / 0.65)" }}
+              style={{ background: "oklch(0.05 0.002 240)" }}
             >
               <div className="font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-text-3">
                 {cell.k}
@@ -717,18 +734,20 @@ function PlaceholderTile({ onClick, title, kicker, icon, ariaLabel }: Placeholde
     <button
       type="button"
       onClick={onClick}
-      className="group relative flex overflow-hidden rounded-[16px] text-left transition-[border-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      className="group relative flex overflow-hidden text-left transition-[border-color,background,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       style={{
-        border: "1px dashed oklch(0.82 0.16 200 / 0.15)",
-        background: "oklch(0.11 0.008 240 / 0.60)",
-        minHeight: 120,
+        border: "1px dashed oklch(0.75 0.18 42 / 0.20)",
+        background: "oklch(0.06 0.003 240)",
+        minHeight: 130,
       }}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.82 0.16 200 / 0.40)";
-        (e.currentTarget as HTMLElement).style.boxShadow = "0 0 24px -8px var(--color-accent-glow)";
+        (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.75 0.18 42 / 0.50)";
+        (e.currentTarget as HTMLElement).style.background = "oklch(0.08 0.005 240)";
+        (e.currentTarget as HTMLElement).style.boxShadow = "0 0 32px -12px oklch(0.75 0.18 42 / 0.30)";
       }}
       onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.82 0.16 200 / 0.15)";
+        (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.75 0.18 42 / 0.20)";
+        (e.currentTarget as HTMLElement).style.background = "oklch(0.06 0.003 240)";
         (e.currentTarget as HTMLElement).style.boxShadow = "none";
       }}
       aria-label={ariaLabel ?? title}
@@ -737,19 +756,19 @@ function PlaceholderTile({ onClick, title, kicker, icon, ariaLabel }: Placeholde
       <div
         className="flex shrink-0 items-center justify-center"
         style={{
-          width: 140,
-          background: "radial-gradient(120% 80% at 30% 30%, oklch(0.26 0.06 200 / 0.35) 0%, transparent 60%)",
-          borderRight: "1px dashed oklch(0.82 0.16 200 / 0.12)",
+          width: 160,
+          background: "radial-gradient(120% 80% at 30% 30%, oklch(0.75 0.18 42 / 0.06) 0%, transparent 60%)",
+          borderRight: "1px dashed oklch(0.75 0.18 42 / 0.15)",
         }}
       >
         <span
           aria-hidden
-          className="grid h-12 w-12 place-items-center rounded-[12px] transition-transform motion-safe:group-hover:scale-110"
+          className="grid h-12 w-12 place-items-center transition-transform motion-safe:group-hover:scale-110"
           style={{
-            background: "linear-gradient(180deg, oklch(0.28 0.04 238), oklch(0.20 0.02 240))",
-            border: "1px solid oklch(0.76 0.09 200 / 0.35)",
-            boxShadow: "0 8px 22px -14px var(--color-accent)",
-            color: "var(--color-accent-2)",
+            background: "linear-gradient(135deg, oklch(0.75 0.18 42 / 0.15), oklch(0.60 0.20 30 / 0.10))",
+            border: "1px solid oklch(0.75 0.18 42 / 0.30)",
+            boxShadow: "0 8px 22px -14px oklch(0.75 0.18 42 / 0.40)",
+            color: "var(--color-accent)",
           }}
         >
           {icon}
@@ -757,11 +776,11 @@ function PlaceholderTile({ onClick, title, kicker, icon, ariaLabel }: Placeholde
       </div>
 
       {/* 右侧文字区 */}
-      <div className="flex flex-1 flex-col justify-center px-5 py-4">
-        <div className="text-[15px] font-semibold tracking-tight text-text-2 transition-colors group-hover:text-text">
-          {title}
+      <div className="flex flex-1 flex-col justify-center px-6 py-4">
+        <div className="text-[15px] font-bold tracking-tight transition-colors" style={{ color: "var(--color-text-2)" }}>
+          <span className="group-hover:text-text transition-colors">{title}</span>
         </div>
-        <div className="mt-1 font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em] text-text-3">
+        <div className="mt-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--color-text-4)" }}>
           {kicker}
         </div>
       </div>
@@ -812,35 +831,51 @@ function TopBar({
     <div
       className="sticky top-0 z-30"
       style={{
-        background: "oklch(0.09 0.008 240 / 0.97)",
-        backdropFilter: "blur(32px) saturate(1.8)",
-        WebkitBackdropFilter: "blur(32px) saturate(1.8)",
-        borderBottom: "2px solid oklch(0.82 0.16 200 / 0.20)",
-        boxShadow: "0 8px 40px -8px oklch(0 0 0 / 0.8)",
+        background: "oklch(0.04 0.002 240 / 0.98)",
+        backdropFilter: "blur(32px) saturate(1.5)",
+        WebkitBackdropFilter: "blur(32px) saturate(1.5)",
+        borderBottom: "1px solid oklch(1 0 0 / 0.08)",
+        boxShadow: "0 1px 0 oklch(0.75 0.18 42 / 0.15), 0 12px 40px -8px oklch(0 0 0 / 0.90)",
       }}
     >
-      <div className="mx-auto flex max-w-[1320px] items-center gap-6 px-8 py-4">
+      <div className="mx-auto flex max-w-[1400px] items-center gap-6 px-10 py-5">
         <div className="flex items-center gap-3 shrink-0">
-          <img
-            src="/android-chrome-192x192.png"
-            alt={BRAND.name}
-            className="h-9 w-9 rounded-xl"
-            style={{ boxShadow: "0 0 0 1px oklch(0.82 0.16 200 / 0.30), 0 0 20px -4px var(--color-accent-glow)" }}
-          />
-          <span
-            className="font-mono text-[12px] font-bold uppercase"
-            style={{ color: "var(--color-text)", letterSpacing: "0.22em" }}
-            aria-hidden
+          <div
+            className="flex h-10 w-10 items-center justify-center rounded-lg overflow-hidden"
+            style={{
+              background: "linear-gradient(135deg, oklch(0.75 0.18 42), oklch(0.60 0.20 30))",
+              boxShadow: "0 0 0 1px oklch(0.75 0.18 42 / 0.40), 0 0 24px -4px oklch(0.75 0.18 42 / 0.50)",
+            }}
           >
-            {BRAND.name}
-          </span>
+            <img
+              src="/android-chrome-192x192.png"
+              alt={BRAND.name}
+              className="h-7 w-7 object-contain"
+            />
+          </div>
+          <div className="flex flex-col">
+            <span
+              className="font-mono text-[13px] font-bold uppercase"
+              style={{ color: "var(--color-text)", letterSpacing: "0.28em", lineHeight: 1 }}
+              aria-hidden
+            >
+              {BRAND.name}
+            </span>
+            <span
+              className="font-mono text-[9px] uppercase tracking-[0.18em]"
+              style={{ color: "var(--color-accent-2)", lineHeight: 1.2, marginTop: 2 }}
+            >
+              Studio
+            </span>
+          </div>
         </div>
 
         <label
-          className="flex flex-1 max-w-[500px] mx-auto items-center gap-2 rounded-full px-4 py-2 transition-colors focus-within:border-accent/60"
+          className="flex flex-1 max-w-[480px] mx-auto items-center gap-2 px-4 py-2.5 transition-colors"
           style={{
-            background: "oklch(0.14 0.012 240 / 0.75)",
-            border: "1px solid oklch(0.82 0.16 200 / 0.18)",
+            background: "oklch(0.10 0.006 240 / 0.80)",
+            border: "1px solid oklch(1 0 0 / 0.10)",
+            borderRadius: 4,
           }}
         >
             <Search className="h-3.5 w-3.5 text-text-3" />
@@ -867,22 +902,30 @@ function TopBar({
             </kbd>
         </label>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-3 shrink-0">
           <button
             type="button"
             onClick={onAssets}
-            className="inline-flex items-center gap-1.5 rounded-[7px] border border-accent/25 bg-accent-dim px-3 py-1.5 text-[12px] text-text-2 transition-colors hover:border-accent/50 hover:bg-accent-soft hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-[11.5px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            style={{
+              color: "var(--color-text-3)",
+              letterSpacing: "0.04em",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--color-text)")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--color-text-3)")}
             title={t("assets:library_title")}
           >
             <Library className="h-3.5 w-3.5" />
             {t("assets:library_title")}
           </button>
-          <span aria-hidden className="mx-1 h-5 w-px bg-hairline-soft" />
           <button
             type="button"
             onClick={onImport}
             disabled={importing}
-            className="inline-flex items-center gap-1.5 rounded-[7px] border border-hairline bg-bg-grad-a/50 px-3 py-1.5 text-[12px] text-text-2 transition-colors hover:border-hairline-strong hover:bg-bg-grad-a focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-[11.5px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ color: "var(--color-text-3)", letterSpacing: "0.04em" }}
+            onMouseEnter={(e) => { if (!importing) e.currentTarget.style.color = "var(--color-text)"; }}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--color-text-3)")}
           >
             {importing ? (
               <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" />
@@ -891,11 +934,17 @@ function TopBar({
             )}
             {importing ? t("dashboard:importing") : t("dashboard:import_zip")}
           </button>
+          <div aria-hidden className="h-5 w-px" style={{ background: "oklch(1 0 0 / 0.10)" }} />
           <button
             type="button"
             onClick={onCreate}
-            className="inline-flex items-center gap-1.5 rounded-[7px] px-3.5 py-1.5 text-[12px] font-semibold transition-transform motion-safe:hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            style={ACCENT_BUTTON_STYLE}
+            className="inline-flex items-center gap-2 px-4 py-2 text-[12px] font-bold uppercase tracking-[0.10em] transition-all motion-safe:hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            style={{
+              background: "linear-gradient(135deg, oklch(0.85 0.14 55), oklch(0.75 0.18 42))",
+              color: "oklch(0.06 0 0)",
+              borderRadius: 3,
+              boxShadow: "0 0 0 1px oklch(0.75 0.18 42 / 0.50), 0 8px 24px -6px oklch(0.75 0.18 42 / 0.50)",
+            }}
           >
             <Plus className="h-3.5 w-3.5" />
             {t("dashboard:create_project")}
@@ -1006,37 +1055,61 @@ function HeroStrip({ totals, t }: HeroStripProps) {
   return (
     <div
       style={{
-        background: "linear-gradient(180deg, oklch(0.11 0.010 240 / 0.95) 0%, transparent 100%)",
-        borderBottom: "1px solid oklch(0.82 0.16 200 / 0.10)",
+        background: "oklch(0.04 0.002 240)",
+        borderBottom: "1px solid oklch(1 0 0 / 0.06)",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
-      <div className="mx-auto max-w-[1320px] px-8 pt-10 pb-8">
+      {/* 背景装饰：橙红光晕 */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "radial-gradient(600px 300px at 20% 50%, oklch(0.75 0.18 42 / 0.08), transparent 70%)",
+          pointerEvents: "none",
+        }}
+      />
+      {/* 背景装饰：细网格 */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          backgroundImage: "linear-gradient(to right, oklch(1 0 0 / 0.03) 1px, transparent 1px), linear-gradient(to bottom, oklch(1 0 0 / 0.03) 1px, transparent 1px)",
+          backgroundSize: "40px 40px",
+          pointerEvents: "none",
+        }}
+      />
+
+      <div className="mx-auto max-w-[1400px] px-10 pt-14 pb-12" style={{ position: "relative" }}>
         {/* 顶部眉标行 */}
-        <div className="mb-4 flex items-center gap-3">
+        <div className="mb-6 flex items-center gap-4">
           <span
-            className="font-mono text-[10px] font-bold uppercase tracking-[0.20em]"
-            style={{ color: "var(--color-accent-2)" }}
+            className="font-mono text-[9px] font-bold uppercase tracking-[0.30em]"
+            style={{ color: "var(--color-accent)", opacity: 0.8 }}
           >
             {t("dashboard:lobby_hero_eyebrow")}
           </span>
           <span
             aria-hidden
             className="h-px flex-1"
-            style={{ background: "linear-gradient(90deg, oklch(0.82 0.16 200 / 0.30), transparent)" }}
+            style={{ background: "oklch(1 0 0 / 0.06)" }}
           />
-          <span className="font-mono text-[10px] text-text-3">{dateLine}</span>
+          <span className="font-mono text-[9px] tracking-[0.10em]" style={{ color: "var(--color-text-4)" }}>{dateLine}</span>
         </div>
 
-        {/* 主标题 + 统计数字横排 */}
-        <div className="flex items-end justify-between gap-8">
+        {/* 超大标题 + 右侧统计 */}
+        <div className="flex items-start justify-between gap-12">
           <div className="min-w-0 flex-1">
             <h1
               className="font-editorial m-0"
               style={{
-                fontSize: 62,
+                fontSize: 80,
                 fontWeight: 400,
-                lineHeight: 1.1,
-                letterSpacing: "-0.02em",
+                lineHeight: 1.0,
+                letterSpacing: "-0.03em",
                 color: "var(--color-text)",
               }}
             >
@@ -1053,27 +1126,36 @@ function HeroStrip({ totals, t }: HeroStripProps) {
                 }
               />
             </h1>
-            <p className="m-0 mt-3 max-w-[520px] text-[13.5px] leading-[1.6] text-text-3">
+            <p className="m-0 mt-5 max-w-[480px] text-[13px] leading-[1.7]" style={{ color: "var(--color-text-4)" }}>
               {summaryLine}
             </p>
           </div>
 
-          {/* 统计数字 - 竖向分隔线风格 */}
-          <div className="flex shrink-0 items-stretch gap-0 overflow-hidden rounded-[12px]" style={{ border: "1px solid oklch(0.82 0.16 200 / 0.15)", background: "oklch(0.12 0.010 240 / 0.60)" }}>
+          {/* 统计数字 — 纵向排列，橙色强调 */}
+          <div
+            className="shrink-0 flex flex-col gap-0 overflow-hidden"
+            style={{
+              border: "1px solid oklch(1 0 0 / 0.08)",
+              background: "oklch(0.07 0.004 240 / 0.80)",
+              minWidth: 200,
+            }}
+          >
             {stats.map((s, i) => (
               <div
                 key={s.key}
-                className={"flex flex-col items-center justify-center px-6 py-4" + (i < stats.length - 1 ? " border-r" : "")}
-                style={i < stats.length - 1 ? { borderColor: "oklch(0.82 0.16 200 / 0.12)" } : undefined}
+                className="flex items-center justify-between px-6 py-4"
+                style={{
+                  borderBottom: i < stats.length - 1 ? "1px solid oklch(1 0 0 / 0.06)" : undefined,
+                }}
               >
+                <div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-text-4)" }}>
+                  {s.label}
+                </div>
                 <div
-                  className="font-editorial tabular-nums"
-                  style={{ fontSize: 40, fontWeight: 400, lineHeight: 1, letterSpacing: "-0.02em", ...s.tone }}
+                  className="font-mono tabular-nums font-bold"
+                  style={{ fontSize: 28, lineHeight: 1, letterSpacing: "-0.02em", ...s.tone }}
                 >
                   {s.value}
-                </div>
-                <div className="mt-1.5 font-mono text-[9.5px] font-bold uppercase tracking-[0.14em] text-text-3">
-                  {s.label}
                 </div>
               </div>
             ))}
@@ -1109,12 +1191,12 @@ function FilterPills({ active, onChange, counts, phaseLabels, t }: FilterPillsPr
       className="sticky z-20"
       style={{
         top: "var(--lobby-topbar-h, 65px)",
-        background: "oklch(0.10 0.008 240 / 0.92)",
-        backdropFilter: "blur(20px) saturate(1.5)",
-        borderBottom: "1px solid oklch(0.82 0.16 200 / 0.12)",
+        background: "oklch(0.05 0.003 235 / 0.96)",
+        backdropFilter: "blur(20px) saturate(1.4)",
+        borderBottom: "1px solid oklch(1 0 0 / 0.08)",
       }}
     >
-      <div className="mx-auto flex max-w-[1320px] items-center gap-0 px-8">
+      <div className="mx-auto flex max-w-[1400px] items-center gap-0 px-10">
         {pills.map((c) => {
           const isActive = active === c.key;
           return (
@@ -1123,16 +1205,22 @@ function FilterPills({ active, onChange, counts, phaseLabels, t }: FilterPillsPr
               type="button"
               onClick={() => onChange(c.key)}
               aria-pressed={isActive}
-              className="relative inline-flex items-center gap-1.5 px-4 py-3.5 text-[12px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className="relative inline-flex items-center gap-2 px-5 py-4 text-[11px] font-bold uppercase tracking-[0.10em] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               style={{
-                color: isActive ? "var(--color-text)" : "oklch(0.55 0.010 240)",
+                color: isActive ? "var(--color-text)" : "var(--color-text-4)",
                 borderBottom: isActive ? "2px solid var(--color-accent)" : "2px solid transparent",
+                background: isActive ? "oklch(0.75 0.18 42 / 0.05)" : "transparent",
               }}
             >
               {c.label}
               <span
-                className="font-mono text-[10px] tabular-nums"
-                style={{ color: isActive ? "var(--color-accent-2)" : "oklch(0.40 0.008 240)" }}
+                className="font-mono text-[9px] tabular-nums"
+                style={{
+                  color: isActive ? "var(--color-accent)" : "var(--color-text-4)",
+                  background: isActive ? "oklch(0.75 0.18 42 / 0.12)" : "oklch(1 0 0 / 0.05)",
+                  padding: "1px 5px",
+                  borderRadius: 2,
+                }}
               >
                 {c.n}
               </span>
@@ -1140,7 +1228,7 @@ function FilterPills({ active, onChange, counts, phaseLabels, t }: FilterPillsPr
           );
         })}
         <div className="flex-1" />
-        <span className="font-mono text-[10px] uppercase tracking-[0.10em] text-text-3">
+        <span className="font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color: "var(--color-text-4)" }}>
           {t("dashboard:lobby_sort_recent")}
         </span>
       </div>
@@ -1399,10 +1487,8 @@ export function ProjectsPage() {
       className="relative min-h-screen text-text"
       style={
         {
-          // FilterPills 的 sticky top 读这个变量；TopBar = logo h-9 (36) + py-4 (32) + 2px border = 70px
-          "--lobby-topbar-h": "70px",
-          background:
-            "radial-gradient(1200px 600px at 5% -5%, oklch(0.28 0.06 200 / 0.35), transparent 50%), radial-gradient(800px 400px at 95% 100%, oklch(0.22 0.04 240 / 0.30), transparent 50%), oklch(0.08 0.006 240)",
+          "--lobby-topbar-h": "74px",
+          background: "oklch(0.04 0.002 240)",
         } as CSSProperties
       }
     >
@@ -1442,7 +1528,7 @@ export function ProjectsPage() {
         />
       ) : null}
 
-      <main className="mx-auto max-w-[1320px] px-8 pt-8 pb-20">
+      <main className="mx-auto max-w-[1400px] px-10 pt-10 pb-24">
         {projectsLoading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-6 w-6 motion-safe:animate-spin text-accent" />
@@ -1455,11 +1541,17 @@ export function ProjectsPage() {
         ) : (
           <>
             {featured ? (
-              <section className="mb-7" aria-labelledby="lobby-now-editing-heading">
-                <div className="mb-3 flex items-baseline justify-between">
+              <section className="mb-10" aria-labelledby="lobby-now-editing-heading">
+                <div className="mb-4 flex items-center gap-4">
+                  <span
+                    aria-hidden
+                    className="h-4 w-[3px]"
+                    style={{ background: "var(--color-accent)", borderRadius: 2 }}
+                  />
                   <h2
                     id="lobby-now-editing-heading"
-                    className="m-0 font-mono text-[12.5px] font-semibold uppercase tracking-[0.06em] text-text-2"
+                    className="m-0 font-mono text-[10px] font-bold uppercase tracking-[0.20em]"
+                    style={{ color: "var(--color-accent)" }}
                   >
                     {t("dashboard:lobby_now_editing_eyebrow")}
                   </h2>
@@ -1490,18 +1582,29 @@ export function ProjectsPage() {
               </div>
             ) : (
               <section aria-labelledby="lobby-library-heading">
-                <div className="mb-3 flex items-baseline justify-between">
+                <div className="mb-5 flex items-center gap-4">
+                  <span
+                    aria-hidden
+                    className="h-4 w-[3px]"
+                    style={{ background: "oklch(1 0 0 / 0.20)", borderRadius: 2 }}
+                  />
                   <h2
                     id="lobby-library-heading"
-                    className="m-0 font-mono text-[12.5px] font-semibold uppercase tracking-[0.06em] text-text-2"
+                    className="m-0 font-mono text-[10px] font-bold uppercase tracking-[0.20em]"
+                    style={{ color: "var(--color-text-3)" }}
                   >
                     {t("dashboard:lobby_library_eyebrow")}
                   </h2>
-                  <span className="font-mono text-[10.5px] tabular-nums text-text-3">
+                  <span
+                    aria-hidden
+                    className="h-px flex-1"
+                    style={{ background: "oklch(1 0 0 / 0.06)" }}
+                  />
+                  <span className="font-mono text-[9px] tabular-nums" style={{ color: "var(--color-text-4)" }}>
                     {t("dashboard:lobby_library_count", { count: restProjects.length })}
                   </span>
                 </div>
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2">
                   {restProjects.map((project) => (
                     <ProjectCard
                       key={project.name}

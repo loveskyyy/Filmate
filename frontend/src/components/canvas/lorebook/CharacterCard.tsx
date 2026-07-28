@@ -32,7 +32,7 @@ interface CharacterCardProps {
 
 const FIELD_STYLE: React.CSSProperties = {
   background:
-    "linear-gradient(180deg, oklch(0.20 0.011 240 / 0.6), oklch(0.18 0.010 240 / 0.45))",
+    "linear-gradient(180deg, oklch(0.20 0.011 240 / 0.6), oklch(0.10 0.005 240 / 0.45))",
   border: "1px solid var(--color-hairline)",
   color: "var(--color-text)",
   boxShadow: "inset 0 1px 2px oklch(0 0 0 / 0.2)",
@@ -369,7 +369,7 @@ export function CharacterCard({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="focus-ring mt-1.5 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--color-hairline)] px-3 py-4 text-sm text-[var(--color-text-4)] transition-colors hover:border-[var(--color-accent-soft)] hover:text-[var(--color-text-2)]"
-              style={{ background: "oklch(0.18 0.010 240 / 0.35)" }}
+              style={{ background: "oklch(0.10 0.005 240 / 0.35)" }}
             >
               <Upload className="h-4 w-4" />
               {t("upload_reference")}

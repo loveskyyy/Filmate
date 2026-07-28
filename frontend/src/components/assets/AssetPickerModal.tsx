@@ -113,7 +113,7 @@ export function AssetPickerModal({ type, existingNames, onClose, onImport }: Pro
             className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
             style={{
               background:
-                "linear-gradient(135deg, var(--color-accent-dim), oklch(0.76 0.09 200 / 0.05))",
+                "linear-gradient(135deg, var(--color-accent-dim), oklch(0.75 0.18 42 / 0.05))",
               border: "1px solid var(--color-accent-soft)",
               color: "var(--color-accent-2)",
               boxShadow: "0 8px 18px -8px var(--color-accent-glow)",
@@ -143,7 +143,7 @@ export function AssetPickerModal({ type, existingNames, onClose, onImport }: Pro
           <div
             className="flex w-52 items-center gap-2 rounded-md px-2.5 py-1.5"
             style={{
-              background: "oklch(0.16 0.010 240 / 0.6)",
+              background: "oklch(0.09 0.004 240 / 0.6)",
               border: "1px solid var(--color-hairline)",
             }}
           >

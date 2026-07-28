@@ -133,7 +133,7 @@ export function AgentHandoffHint({ triggerKey, storageScope }: AgentHandoffHintP
           className="agent-handoff-arc pointer-events-none absolute inset-0"
           style={{
             background:
-              "radial-gradient(ellipse 60% 100% at 50% 0%, oklch(0.76 0.09 200 / 0.22) 0%, transparent 65%)",
+              "radial-gradient(ellipse 60% 100% at 50% 0%, oklch(0.75 0.18 42 / 0.22) 0%, transparent 65%)",
             borderRadius: 14,
             mixBlendMode: "screen",
             overflow: "hidden",
@@ -151,7 +151,7 @@ export function AgentHandoffHint({ triggerKey, storageScope }: AgentHandoffHintP
             height: 1.5,
             borderRadius: 999,
             background:
-              "linear-gradient(90deg, var(--color-accent-2) 0%, oklch(0.76 0.09 200 / 0.4) 100%)",
+              "linear-gradient(90deg, var(--color-accent-2) 0%, oklch(0.75 0.18 42 / 0.4) 100%)",
             boxShadow: "0 0 8px var(--color-accent-glow)",
           }}
         />

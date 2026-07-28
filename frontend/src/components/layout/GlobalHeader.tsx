@@ -177,11 +177,11 @@ export function GlobalHeader({ onNavigateBack }: GlobalHeaderProps) {
         style={{
           gridTemplateColumns: "minmax(0, 280px) 1fr auto",
           gap: 16,
-          background: "oklch(0.09 0.008 240 / 0.97)",
-          backdropFilter: "blur(28px) saturate(1.6)",
-          WebkitBackdropFilter: "blur(28px) saturate(1.6)",
-          borderBottom: "2px solid oklch(0.82 0.16 200 / 0.18)",
-          boxShadow: "0 8px 32px -8px oklch(0 0 0 / 0.7)",
+          background: "oklch(0.04 0.002 240 / 0.98)",
+          backdropFilter: "blur(28px) saturate(1.4)",
+          WebkitBackdropFilter: "blur(28px) saturate(1.4)",
+          borderBottom: "1px solid oklch(1 0 0 / 0.08)",
+          boxShadow: "0 1px 0 oklch(0.75 0.18 42 / 0.12), 0 8px 32px -8px oklch(0 0 0 / 0.80)",
           position: "relative",
           zIndex: 20,
         }}
@@ -230,7 +230,7 @@ export function GlobalHeader({ onNavigateBack }: GlobalHeaderProps) {
               }}
               onMouseEnter={(e) => {
                 if (!notificationDrawerOpen)
-                  e.currentTarget.style.background = "oklch(0.82 0.16 200 / 0.10)";
+                  e.currentTarget.style.background = "oklch(0.75 0.18 42 / 0.10)";
               }}
               onMouseLeave={(e) => {
                 if (!notificationDrawerOpen) e.currentTarget.style.background = "transparent";
@@ -268,7 +268,7 @@ export function GlobalHeader({ onNavigateBack }: GlobalHeaderProps) {
               style={{
                 background: usageDrawerOpen
                   ? "var(--color-accent-dim)"
-                  : "oklch(0.18 0.014 242 / 0.55)",
+                  : "oklch(0.10 0.005 240 / 0.55)",
                 border: "1px solid var(--color-hairline-soft)",
                 color: "var(--color-text-2)",
               }}
@@ -331,7 +331,7 @@ export function GlobalHeader({ onNavigateBack }: GlobalHeaderProps) {
               }}
               onMouseEnter={(e) => {
                 if (!taskHudOpen)
-                  e.currentTarget.style.background = "oklch(0.82 0.16 200 / 0.10)";
+                  e.currentTarget.style.background = "oklch(0.75 0.18 42 / 0.10)";
               }}
               onMouseLeave={(e) => {
                 if (!taskHudOpen) e.currentTarget.style.background = "transparent";
@@ -370,10 +370,10 @@ export function GlobalHeader({ onNavigateBack }: GlobalHeaderProps) {
               className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors focus-ring disabled:cursor-not-allowed disabled:opacity-50"
               style={{
                 background:
-                  "linear-gradient(135deg, var(--color-accent-2), var(--color-accent))",
-                color: "oklch(0.08 0 0)",
+                  "linear-gradient(135deg, oklch(0.85 0.14 55), oklch(0.75 0.18 42))",
+                color: "oklch(0.06 0 0)",
                 boxShadow:
-                  "inset 0 1px 0 oklch(1 0 0 / 0.3), 0 0 0 1px oklch(0.55 0.18 200 / 0.4), 0 6px 18px -8px var(--color-accent-glow)",
+                  "0 0 0 1px oklch(0.75 0.18 42 / 0.50), 0 6px 18px -8px oklch(0.75 0.18 42 / 0.50)",
               }}
               title={t("dashboard:export_project_zip")}
               aria-label={t("dashboard:export_project_zip")}
@@ -410,7 +410,7 @@ export function GlobalHeader({ onNavigateBack }: GlobalHeaderProps) {
             className="grid h-[30px] w-[30px] place-items-center rounded-md transition-colors focus-ring"
             style={{ color: "var(--color-text-3)" }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "oklch(0.82 0.16 200 / 0.10)";
+              e.currentTarget.style.background = "oklch(0.75 0.18 42 / 0.10)";
               e.currentTarget.style.color = "var(--color-text)";
             }}
             onMouseLeave={(e) => {
@@ -436,7 +436,7 @@ export function GlobalHeader({ onNavigateBack }: GlobalHeaderProps) {
             className="relative grid h-[30px] w-[30px] place-items-center rounded-md transition-colors focus-ring"
             style={{ color: "var(--color-text-3)" }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "oklch(0.82 0.16 200 / 0.10)";
+              e.currentTarget.style.background = "oklch(0.75 0.18 42 / 0.10)";
               e.currentTarget.style.color = "var(--color-text)";
             }}
             onMouseLeave={(e) => {

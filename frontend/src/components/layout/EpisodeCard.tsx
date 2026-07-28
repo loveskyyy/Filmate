@@ -85,7 +85,7 @@ export function EpisodeCard({
           : "none",
       }}
       onMouseEnter={(e) => {
-        if (!active) e.currentTarget.style.background = "oklch(0.82 0.16 200 / 0.07)";
+        if (!active) e.currentTarget.style.background = "oklch(0.75 0.18 42 / 0.07)";
       }}
       onMouseLeave={(e) => {
         if (!active) e.currentTarget.style.background = "transparent";

@@ -92,7 +92,7 @@ export function NarrationAudioCard({
             className="mt-2.5 flex items-center justify-center gap-2 rounded-[8px] py-2.5 text-[11.5px]"
             style={{
               border: "1px dashed var(--color-hairline)",
-              background: "oklch(0.18 0.010 240 / 0.4)",
+              background: "oklch(0.10 0.005 240 / 0.4)",
               color: "var(--color-text-4)",
             }}
           >

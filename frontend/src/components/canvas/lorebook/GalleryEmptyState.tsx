@@ -19,7 +19,7 @@ export function GalleryEmptyState({ icon, label, hint, onClick }: Props) {
       style={{
         border: "1px dashed var(--color-hairline)",
         background:
-          "radial-gradient(600px 280px at 50% -10%, var(--color-accent-dim), transparent 60%), oklch(0.18 0.010 240 / 0.35)",
+          "radial-gradient(600px 280px at 50% -10%, var(--color-accent-dim), transparent 60%), oklch(0.10 0.005 240 / 0.35)",
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.borderColor = "var(--color-accent-soft)";
@@ -44,7 +44,7 @@ export function GalleryEmptyState({ icon, label, hint, onClick }: Props) {
           className="grid h-14 w-14 place-items-center rounded-2xl"
           style={{
             background:
-              "linear-gradient(135deg, var(--color-accent-dim), oklch(0.76 0.09 200 / 0.04))",
+              "linear-gradient(135deg, var(--color-accent-dim), oklch(0.75 0.18 42 / 0.04))",
             border: "1px solid var(--color-accent-soft)",
             color: "var(--color-accent-2)",
             boxShadow: "0 12px 30px -10px var(--color-accent-glow)",
