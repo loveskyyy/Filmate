@@ -172,7 +172,7 @@ export function SourceFileViewer({ projectName, filename }: SourceFileViewerProp
             className="whitespace-pre-wrap rounded-lg p-4 font-mono text-[13px] leading-[1.7]"
             style={{
               background:
-                "linear-gradient(180deg, oklch(0.20 0.011 265 / 0.5), oklch(0.18 0.010 265 / 0.35))",
+                "linear-gradient(180deg, oklch(0.20 0.011 240 / 0.5), oklch(0.18 0.010 240 / 0.35))",
               border: "1px solid var(--color-hairline-soft)",
               color: "var(--color-text-2)",
               boxShadow: "inset 0 1px 0 oklch(1 0 0 / 0.03)",
@@ -208,7 +208,7 @@ function ViewerToolbar({
       className="sticky top-0 z-10 flex items-center gap-3 px-5 py-3"
       style={{
         background:
-          "linear-gradient(180deg, oklch(0.20 0.012 265 / 0.85), oklch(0.18 0.010 265 / 0.65))",
+          "linear-gradient(180deg, oklch(0.20 0.012 240 / 0.85), oklch(0.18 0.010 240 / 0.65))",
         backdropFilter: "blur(10px)",
         WebkitBackdropFilter: "blur(10px)",
         borderBottom: "1px solid var(--color-hairline-soft)",
@@ -221,16 +221,16 @@ function ViewerToolbar({
         style={{
           color: "var(--color-text-3)",
           border: "1px solid var(--color-hairline)",
-          background: "oklch(0.22 0.011 265 / 0.5)",
+          background: "oklch(0.22 0.011 240 / 0.5)",
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.color = "var(--color-text)";
-          e.currentTarget.style.background = "oklch(0.26 0.013 265 / 0.7)";
+          e.currentTarget.style.background = "oklch(0.26 0.013 240 / 0.7)";
           e.currentTarget.style.borderColor = "var(--color-accent-soft)";
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.color = "var(--color-text-3)";
-          e.currentTarget.style.background = "oklch(0.22 0.011 265 / 0.5)";
+          e.currentTarget.style.background = "oklch(0.22 0.011 240 / 0.5)";
           e.currentTarget.style.borderColor = "var(--color-hairline)";
         }}
       >

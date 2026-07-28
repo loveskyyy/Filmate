@@ -171,7 +171,7 @@ export function PendingQuestionWizard({
       style={{
         borderTop: "1px solid var(--color-accent-soft)",
         background:
-          "linear-gradient(180deg, oklch(0.76 0.09 295 / 0.10), transparent 60%), oklch(0.18 0.010 265 / 0.6)",
+          "linear-gradient(180deg, oklch(0.76 0.09 200 / 0.10), transparent 60%), oklch(0.18 0.010 240 / 0.6)",
         backdropFilter: "blur(10px)",
         WebkitBackdropFilter: "blur(10px)",
       }}
@@ -234,7 +234,7 @@ export function PendingQuestionWizard({
                       ? "var(--color-accent)"
                       : isVisitedStep
                         ? "var(--color-accent-soft)"
-                        : "oklch(0.30 0.012 265 / 0.4)",
+                        : "oklch(0.30 0.012 240 / 0.4)",
                     boxShadow: isActiveStep
                       ? "0 0 8px var(--color-accent-glow)"
                       : "none",
@@ -295,7 +295,7 @@ export function PendingQuestionWizard({
               className="mt-3 overflow-hidden rounded-lg"
               style={{
                 border: "1px solid var(--color-hairline-soft)",
-                background: "oklch(0.16 0.010 265 / 0.45)",
+                background: "oklch(0.16 0.010 240 / 0.45)",
               }}
             >
               {currentQuestionOptions.map((option, optionIndex) => {
@@ -439,7 +439,7 @@ export function PendingQuestionWizard({
               className="w-full resize-none rounded-md px-3 py-2 text-[12.5px] leading-[1.55] outline-none transition-colors focus-ring"
               style={{
                 border: "1px solid var(--color-accent-soft)",
-                background: "oklch(0.16 0.010 265 / 0.7)",
+                background: "oklch(0.16 0.010 240 / 0.7)",
                 color: "var(--color-text)",
                 maxHeight: `${OTHER_TEXTAREA_MAX_PX}px`,
                 overflowY: "hidden",
