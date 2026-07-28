@@ -33,10 +33,10 @@ interface NavItem {
 }
 
 /**
- * 工作台侧栏 v3：
- * - 工作区导航（5 个胶囊按钮：项目概览 / 源文件 / 角色集 / 场景库 / 道具库）
- * - 分集列表（搜索 + 卡片列表，每张卡片含缩略+状态+进度+费用）
- * - 折叠态（64px）：仅图标 + Ex 字符
+ * 工作台侧栏 v4：
+ * - 加宽至 280px（折叠 68px）
+ * - 导航项更大，图标更醒目
+ * - 分组标题更具电影感
  */
 export function AssetSidebar({ className }: AssetSidebarProps) {
   const { t } = useTranslation(["common", "dashboard"]);
@@ -51,7 +51,6 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
   const propCount = Object.keys(currentProjectData?.props ?? {}).length;
   const productCount = Object.keys(currentProjectData?.products ?? {}).length;
   const episodes = currentProjectData?.episodes ?? [];
-  // 广告/短片项目恒单集：隐藏「集」语义（标题/计数/搜索/添加），直达唯一视频
   const isAd = currentProjectData?.content_mode === "ad";
 
   const sourceFilesVersion = useAppStore((s) => s.sourceFilesVersion);
@@ -68,15 +67,12 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
       .then((res) => {
         if (!cancelled) setSourceCount(res.files?.source?.length ?? 0);
       })
-      .catch(() => {
-        // 失败时保留上一份成功值，避免把网络/权限错误伪装成 0
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, [currentProjectName, sourceFilesVersion]);
 
-  // Derive active episode from `/episodes/:id`
   const activeEp = useMemo(() => {
     const m = location.match(/^\/episodes\/(\d+)/);
     return m ? parseInt(m[1], 10) : null;
@@ -112,7 +108,6 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
       icon: Package,
       meta: propCount,
     },
-    // 产品资产仅广告/短片项目使用（v1 单产品设定），其余模式隐藏入口
     ...(isAd
       ? [
           {
@@ -131,7 +126,6 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
     return location === item.path || location.startsWith(item.path + "/");
   };
 
-  // ad 隐藏搜索框，残留的 search state 不参与过滤，避免唯一视频入口被吞
   const filteredEps = isAd
     ? episodes
     : episodes.filter(
@@ -142,16 +136,30 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
     <aside
       className={`flex flex-col overflow-hidden ${className ?? ""}`}
       style={{
-        width: collapsed ? 64 : 256,
-        transition: "width .18s ease",
-        borderRight: "1px solid oklch(0.82 0.16 200 / 0.10)",
-        background:
-          "linear-gradient(180deg, oklch(0.175 0.014 240 / 0.65), oklch(0.155 0.012 238 / 0.55))",
-        boxShadow: "inset -1px 0 0 oklch(0.82 0.16 200 / 0.04), 4px 0 20px -10px oklch(0 0 0 / 0.4)",
+        width: collapsed ? 68 : 280,
+        transition: "width .20s ease",
+        borderRight: "1px solid oklch(0.82 0.16 200 / 0.14)",
+        background: "oklch(0.10 0.008 240 / 0.95)",
+        boxShadow: "inset -1px 0 0 oklch(0.82 0.16 200 / 0.06), 6px 0 32px -12px oklch(0 0 0 / 0.5)",
       }}
     >
+      {/* ---- 分组标题：WORKSPACE ---- */}
+      {!collapsed && (
+        <div
+          className="px-4 pt-4 pb-2"
+          style={{ borderBottom: "1px solid oklch(0.82 0.16 200 / 0.08)" }}
+        >
+          <span
+            className="font-mono text-[9.5px] font-bold uppercase"
+            style={{ color: "oklch(0.45 0.010 240)", letterSpacing: "0.18em" }}
+          >
+            Workspace
+          </span>
+        </div>
+      )}
+
       {/* ---- Workspace nav ---- */}
-      <div className="px-2.5 pb-1.5 pt-2.5">
+      <div className={collapsed ? "px-2 py-3" : "px-2.5 py-2"}>
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = isNavActive(item);
@@ -162,46 +170,67 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
               onClick={() => setLocation(item.path)}
               title={collapsed ? item.label : ""}
               aria-label={collapsed ? item.label : undefined}
-              className="relative mb-px flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors focus-ring hover:bg-[oklch(0.82_0.16_200/0.08)]"
+              className="relative mb-0.5 flex w-full items-center gap-3 rounded-lg transition-colors focus-ring"
               style={{
+                padding: collapsed ? "10px 0" : "9px 10px",
+                justifyContent: collapsed ? "center" : undefined,
                 background: active
-                  ? "linear-gradient(90deg, var(--color-accent-soft), var(--color-accent-dim) 70%, transparent)"
+                  ? "linear-gradient(90deg, oklch(0.76 0.09 200 / 0.18), oklch(0.76 0.09 200 / 0.08) 70%, transparent)"
                   : "transparent",
                 color: active ? "var(--color-text)" : "var(--color-text-2)",
+              }}
+              onMouseEnter={(e) => {
+                if (!active) (e.currentTarget as HTMLElement).style.background = "oklch(0.82 0.16 200 / 0.06)";
+              }}
+              onMouseLeave={(e) => {
+                if (!active) (e.currentTarget as HTMLElement).style.background = "transparent";
               }}
             >
               {active && (
                 <span
-                  className="absolute -left-px top-[7px] bottom-[7px] w-0.5 rounded"
+                  className="absolute left-0 top-[8px] bottom-[8px] w-[3px] rounded-r"
                   style={{
                     background: "var(--color-accent)",
-                    boxShadow: "0 0 8px var(--color-accent-glow)",
+                    boxShadow: "0 0 10px var(--color-accent-glow)",
                   }}
                 />
               )}
               <span
-                className="grid w-4 shrink-0 place-items-center"
-                style={{ color: active ? "var(--color-accent-2)" : "var(--color-text-3)" }}
+                className="grid shrink-0 place-items-center rounded-md"
+                style={{
+                  width: 30,
+                  height: 30,
+                  background: active
+                    ? "oklch(0.76 0.09 200 / 0.20)"
+                    : "oklch(0.16 0.010 240 / 0.60)",
+                  border: active
+                    ? "1px solid oklch(0.76 0.09 200 / 0.35)"
+                    : "1px solid oklch(0.82 0.16 200 / 0.08)",
+                  color: active ? "var(--color-accent-2)" : "var(--color-text-3)",
+                }}
               >
-                <Icon className="h-4 w-4" />
+                <Icon className="h-[15px] w-[15px]" />
               </span>
               {!collapsed && (
                 <>
                   <span
                     className="flex-1 text-left text-[13px]"
                     style={{
-                      fontWeight: active ? 600 : 500,
-                      letterSpacing: "-0.05px",
+                      fontWeight: active ? 600 : 400,
+                      letterSpacing: active ? "-0.01em" : "0",
                     }}
                   >
                     {item.label}
                   </span>
                   {item.meta != null && (
                     <span
-                      className="num rounded-[3px] px-1.5 py-px text-[10.5px]"
+                      className="num rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold"
                       style={{
-                        color: active ? "var(--color-text-3)" : "var(--color-text-4)",
-                        background: active ? "oklch(0 0 0 / 0.2)" : "transparent",
+                        color: active ? "var(--color-accent-2)" : "var(--color-text-4)",
+                        background: active
+                          ? "oklch(0.76 0.09 200 / 0.15)"
+                          : "oklch(0.16 0.010 240 / 0.60)",
+                        border: "1px solid oklch(0.82 0.16 200 / 0.10)",
                       }}
                     >
                       {item.meta}
@@ -214,18 +243,20 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
         })}
       </div>
 
+      {/* ---- 分隔线 ---- */}
       <div
-        className="mx-3.5 my-1 h-px"
-        style={{ background: "var(--color-hairline-soft)" }}
+        className="mx-3 my-1 h-px"
+        style={{ background: "oklch(0.82 0.16 200 / 0.10)" }}
       />
 
       {/* ---- Episodes ---- */}
       {!collapsed ? (
         <>
-          <div className="flex items-center gap-2 px-3.5 pb-1.5 pt-2.5">
+          {/* 分组标题：EPISODES */}
+          <div className="flex items-center gap-2 px-4 pt-3 pb-2">
             <span
-              className="text-[10.5px] font-bold uppercase"
-              style={{ color: "var(--color-text-4)", letterSpacing: "0.8px" }}
+              className="font-mono text-[9.5px] font-bold uppercase"
+              style={{ color: "oklch(0.45 0.010 240)", letterSpacing: "0.18em" }}
             >
               {isAd
                 ? t("dashboard:ad_video_section_title")
@@ -233,7 +264,14 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
             </span>
             {!isAd && (
               <>
-                <span className="num text-[10px]" style={{ color: "var(--color-text-4)" }}>
+                <span
+                  className="num rounded-[3px] px-1 py-px text-[9.5px] font-semibold"
+                  style={{
+                    color: "var(--color-text-4)",
+                    background: "oklch(0.16 0.010 240 / 0.60)",
+                    border: "1px solid oklch(0.82 0.16 200 / 0.08)",
+                  }}
+                >
                   {episodes.length}
                 </span>
                 <span className="flex-1" />
@@ -241,9 +279,10 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
                   type="button"
                   disabled
                   aria-disabled="true"
-                  className="grid h-5 w-5 place-items-center rounded focus-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  className="grid h-6 w-6 place-items-center rounded-md focus-ring disabled:cursor-not-allowed disabled:opacity-40"
                   style={{
-                    background: "oklch(0.24 0.014 242 / 0.6)",
+                    background: "oklch(0.18 0.012 242 / 0.60)",
+                    border: "1px solid oklch(0.82 0.16 200 / 0.12)",
                     color: "var(--color-text-3)",
                   }}
                   title={t("dashboard:add_episode_unavailable")}
@@ -258,10 +297,10 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
           {!isAd && (
             <div className="px-2.5 pb-2">
               <div
-                className="flex items-center gap-1.5 rounded-md px-2 py-1.5"
+                className="flex items-center gap-2 rounded-lg px-3 py-2"
                 style={{
-                  background: "oklch(0.14 0.012 240 / 0.65)",
-                  border: "1px solid var(--color-hairline)",
+                  background: "oklch(0.13 0.010 240 / 0.70)",
+                  border: "1px solid oklch(0.82 0.16 200 / 0.10)",
                 }}
               >
                 <Search
@@ -274,17 +313,17 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={t("dashboard:episode_search_placeholder")}
                   aria-label={t("dashboard:episode_search_placeholder")}
-                  className="min-w-0 flex-1 bg-transparent text-xs outline-none focus-ring"
+                  className="min-w-0 flex-1 bg-transparent text-[12px] outline-none focus-ring"
                   style={{ color: "var(--color-text)" }}
                 />
               </div>
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto px-2 pb-2.5">
+          <div className="flex-1 overflow-y-auto px-2 pb-3">
             {filteredEps.length === 0 ? (
               <div
-                className="px-2 py-6 text-center text-[11px] italic"
+                className="px-2 py-8 text-center text-[11px] italic"
                 style={{ color: "var(--color-text-4)" }}
               >
                 {episodes.length === 0
@@ -306,7 +345,7 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
           </div>
         </>
       ) : (
-        <div className="flex-1 overflow-y-auto px-2.5 py-1.5">
+        <div className="flex-1 overflow-y-auto px-2 py-2">
           {filteredEps.map((ep) => {
             const epLabel = isAd
               ? t("dashboard:ad_video_section_title")
@@ -315,23 +354,27 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
                   title: ep.title,
                 });
             return (
-            <button
-              key={ep.episode}
-              type="button"
-              onClick={() => setLocation(`/episodes/${ep.episode}`)}
-              title={epLabel}
-              aria-label={epLabel}
-              className="num mb-[3px] flex h-9 w-full items-center justify-center rounded-md text-[11px] font-bold focus-ring"
-              style={{
-                background: ep.episode === activeEp ? "var(--color-accent-dim)" : "transparent",
-                color:
-                  ep.episode === activeEp
+              <button
+                key={ep.episode}
+                type="button"
+                onClick={() => setLocation(`/episodes/${ep.episode}`)}
+                title={epLabel}
+                aria-label={epLabel}
+                className="num mb-1 flex h-10 w-full items-center justify-center rounded-lg text-[11px] font-bold focus-ring transition-colors"
+                style={{
+                  background: ep.episode === activeEp
+                    ? "oklch(0.76 0.09 200 / 0.20)"
+                    : "oklch(0.14 0.010 240 / 0.50)",
+                  border: ep.episode === activeEp
+                    ? "1px solid oklch(0.76 0.09 200 / 0.30)"
+                    : "1px solid oklch(0.82 0.16 200 / 0.08)",
+                  color: ep.episode === activeEp
                     ? "var(--color-accent-2)"
                     : "var(--color-text-3)",
-              }}
-            >
-              {isAd ? <Clapperboard className="h-4 w-4" aria-hidden /> : `E${ep.episode}`}
-            </button>
+                }}
+              >
+                {isAd ? <Clapperboard className="h-4 w-4" aria-hidden /> : `E${ep.episode}`}
+              </button>
             );
           })}
         </div>
@@ -339,19 +382,20 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
 
       {/* ---- Collapse footer ---- */}
       <div
-        className="flex items-center gap-2 px-2.5 py-2"
+        className="flex items-center gap-2 px-2.5 py-2.5"
         style={{
           borderTop: "1px solid oklch(0.82 0.16 200 / 0.10)",
-          background: "oklch(0.14 0.012 240 / 0.70)",
+          background: "oklch(0.09 0.006 240 / 0.80)",
         }}
       >
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
-          className="grid h-7 w-7 place-items-center rounded-md focus-ring"
+          className="grid h-8 w-8 place-items-center rounded-lg focus-ring transition-colors"
           aria-expanded={!collapsed}
           style={{
-            background: "oklch(0.22 0.014 242 / 0.55)",
+            background: "oklch(0.18 0.012 242 / 0.60)",
+            border: "1px solid oklch(0.82 0.16 200 / 0.12)",
             color: "var(--color-text-3)",
           }}
           title={collapsed ? t("dashboard:sidebar_expand") : t("dashboard:sidebar_collapse")}

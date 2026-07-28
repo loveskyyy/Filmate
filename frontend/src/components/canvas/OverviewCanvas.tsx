@@ -228,38 +228,48 @@ export function OverviewCanvas({ projectName, projectData }: OverviewCanvasProps
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-5xl space-y-5 px-6 py-6">
-        {/* Project title — display-serif heading with accent dash */}
-        <header className="flex items-end gap-3">
-          <span
+      <div className="mx-auto max-w-5xl space-y-6 px-8 py-8">
+        {/* Project title — 全宽标题区域 + 装饰线 */}
+        <header
+          className="relative overflow-hidden rounded-2xl px-7 py-6"
+          style={{
+            background: "oklch(0.11 0.010 240 / 0.80)",
+            border: "1px solid oklch(0.82 0.16 200 / 0.14)",
+            boxShadow: "0 8px 32px -16px oklch(0 0 0 / 0.5)",
+          }}
+        >
+          {/* 顶部装饰线 */}
+          <div
             aria-hidden
-            className="mb-1 h-6 w-[3px] rounded-full"
-            style={{
-              background:
-                "linear-gradient(180deg, var(--color-accent-2), var(--color-accent))",
-              boxShadow: "0 0 12px var(--color-accent-glow)",
-            }}
+            className="absolute top-0 left-0 right-0 h-[2px]"
+            style={{ background: "linear-gradient(90deg, transparent, var(--color-accent), var(--color-accent-2), transparent)" }}
           />
-          <div>
-            <h1
-              className="display-serif text-[28px] font-semibold tracking-tight"
-              style={{ color: "var(--color-text)" }}
-            >
-              {projectData.title}
-            </h1>
-            <p
-              className="num mt-0.5 text-[10.5px] uppercase"
-              style={{
-                color: "var(--color-text-4)",
-                letterSpacing: "1.4px",
-              }}
-            >
-              {projectData.content_mode === "narration"
-                ? t("narration_visuals_mode")
-                : projectData.content_mode === "ad"
-                  ? t("ad_short_video_mode")
-                  : t("drama_animation_mode")}
-            </p>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <span
+                aria-hidden
+                className="h-10 w-[3px] rounded-full shrink-0"
+                style={{
+                  background: "linear-gradient(180deg, var(--color-accent-2), var(--color-accent))",
+                  boxShadow: "0 0 16px var(--color-accent-glow)",
+                }}
+              />
+              <div>
+                <div className="font-mono text-[9.5px] font-bold uppercase tracking-[0.18em] text-text-4 mb-1">
+                  {projectData.content_mode === "narration"
+                    ? t("narration_visuals_mode")
+                    : projectData.content_mode === "ad"
+                      ? t("ad_short_video_mode")
+                      : t("drama_animation_mode")}
+                </div>
+                <h1
+                  className="display-serif text-[34px] font-semibold tracking-tight"
+                  style={{ color: "var(--color-text)", letterSpacing: "-0.02em" }}
+                >
+                  {projectData.title}
+                </h1>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -656,25 +666,29 @@ export function OverviewCanvas({ projectName, projectData }: OverviewCanvasProps
 
             {/* Episodes */}
             <section>
-              <div className="mb-2.5 flex items-center gap-2">
+              <div className="mb-4 flex items-center gap-3">
                 <span
                   aria-hidden
-                  className="h-3 w-[3px] rounded-full"
+                  className="h-5 w-[3px] rounded-full shrink-0"
                   style={{
-                    background:
-                      "linear-gradient(180deg, var(--color-accent-2), var(--color-accent))",
+                    background: "linear-gradient(180deg, var(--color-accent-2), var(--color-accent))",
+                    boxShadow: "0 0 10px var(--color-accent-glow)",
                   }}
                 />
                 <h3
-                  className="display-serif text-[15px] font-semibold tracking-tight"
-                  style={{ color: "var(--color-text)" }}
+                  className="display-serif text-[18px] font-semibold tracking-tight"
+                  style={{ color: "var(--color-text)", letterSpacing: "-0.01em" }}
                 >
                   {isAd ? t("ad_video_section_title") : t("episodes_title")}
                 </h3>
                 {!isAd && (projectData.episodes?.length ?? 0) > 0 && (
                   <span
-                    className="num text-[10.5px]"
-                    style={{ color: "var(--color-text-4)" }}
+                    className="num rounded-[4px] px-2 py-0.5 text-[10.5px] font-semibold"
+                    style={{
+                      color: "var(--color-accent-2)",
+                      background: "oklch(0.76 0.09 200 / 0.12)",
+                      border: "1px solid oklch(0.76 0.09 200 / 0.20)",
+                    }}
                   >
                     {projectData.episodes?.length ?? 0}
                   </span>
@@ -686,18 +700,17 @@ export function OverviewCanvas({ projectName, projectData }: OverviewCanvasProps
                   {t("no_episodes_ai_hint")}
                 </p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   {(projectData.episodes ?? []).map((ep) => {
                     const epCost = getEpisodeCost(ep.episode);
                     return (
                       <div
                         key={ep.episode}
-                        className="num flex flex-wrap items-center gap-3 rounded-xl px-4 py-2.5 text-[12px]"
+                        className="num flex flex-wrap items-center gap-3 rounded-xl px-5 py-3.5 text-[12px] transition-colors"
                         style={{
-                          border: "1px solid var(--color-hairline-soft)",
-                          background:
-                            "linear-gradient(180deg, oklch(0.19 0.014 242 / 0.55), oklch(0.16 0.012 240 / 0.40))",
-                          boxShadow: "inset 0 1px 0 oklch(1 0 0 / 0.03)",
+                          border: "1px solid oklch(0.82 0.16 200 / 0.12)",
+                          background: "oklch(0.12 0.010 240 / 0.70)",
+                          boxShadow: "0 2px 12px -6px oklch(0 0 0 / 0.4)",
                         }}
                       >
                         {!isAd && (

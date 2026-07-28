@@ -173,16 +173,15 @@ export function GlobalHeader({ onNavigateBack }: GlobalHeaderProps) {
   return (
     <>
       <header
-        className="grid h-12 shrink-0 items-center px-4"
+        className="grid h-14 shrink-0 items-center px-5"
         style={{
-          gridTemplateColumns: "minmax(0, 256px) 1fr auto",
-          gap: 14,
-          background:
-            "linear-gradient(180deg, oklch(0.17 0.014 242 / 0.92), oklch(0.14 0.012 238 / 0.88))",
-          backdropFilter: "blur(20px) saturate(1.4)",
-          WebkitBackdropFilter: "blur(20px) saturate(1.4)",
-          borderBottom: "1px solid oklch(0.82 0.16 200 / 0.12)",
-          boxShadow: "0 1px 0 0 oklch(0.82 0.16 200 / 0.04) inset, 0 4px 16px -8px oklch(0 0 0 / 0.5)",
+          gridTemplateColumns: "minmax(0, 280px) 1fr auto",
+          gap: 16,
+          background: "oklch(0.09 0.008 240 / 0.97)",
+          backdropFilter: "blur(28px) saturate(1.6)",
+          WebkitBackdropFilter: "blur(28px) saturate(1.6)",
+          borderBottom: "2px solid oklch(0.82 0.16 200 / 0.18)",
+          boxShadow: "0 8px 32px -8px oklch(0 0 0 / 0.7)",
           position: "relative",
           zIndex: 20,
         }}

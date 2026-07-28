@@ -6,8 +6,10 @@ interface PhaseStepperProps {
 }
 
 /**
- * 顶栏阶段步进器：胶囊样式（圆形号 + 标签 + 短分隔线）。
- * 当前阶段高亮青蓝霓虹 accent，已完成阶段显示弱化的连接线。
+ * 顶栏阶段步进器 v2：
+ * - 更大的步骤圆圈，更宽的连接线
+ * - 当前阶段高亮青蓝霓虹 accent + 发光
+ * - 已完成阶段显示青蓝弱化连接线
  */
 export function PhaseStepper({ currentPhase }: PhaseStepperProps) {
   const { t } = useTranslation("dashboard");
@@ -15,62 +17,79 @@ export function PhaseStepper({ currentPhase }: PhaseStepperProps) {
 
   return (
     <nav aria-label={t("workflow_phases")}>
-      <div
-        className="inline-flex items-center gap-px rounded-full p-[3px]"
-        style={{
-          background: "oklch(0.15 0.012 240 / 0.65)",
-          border: "1px solid oklch(0.82 0.16 200 / 0.15)",
-          boxShadow: "inset 0 1px 2px oklch(0 0 0 / 0.35), 0 0 0 1px oklch(0.82 0.16 200 / 0.05)",
-        }}
-      >
+      <div className="inline-flex items-center gap-0">
         {PHASE_ORDER.map((phase, idx) => {
           const isActive = currentIdx === idx;
-          const isPastOrActive = currentIdx >= 0 && currentIdx >= idx;
-          const nextIsActive = currentIdx === idx + 1;
+          const isPast = currentIdx > idx;
+          const isFuture = currentIdx < idx;
           return (
             <div key={phase} className="flex items-center">
+              {/* 步骤项 */}
               <div
                 aria-current={isActive ? "step" : undefined}
-                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors"
+                className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 transition-all"
                 style={
                   isActive
                     ? {
                         color: "var(--color-text)",
-                        background: "linear-gradient(180deg, oklch(0.24 0.016 242), oklch(0.20 0.014 240))",
-                        boxShadow:
-                          "0 0 0 1px oklch(0.82 0.16 200 / 0.25), 0 2px 6px oklch(0 0 0 / 0.4)",
+                        background: "oklch(0.76 0.09 200 / 0.18)",
+                        border: "1px solid oklch(0.76 0.09 200 / 0.35)",
+                        boxShadow: "0 0 16px -4px var(--color-accent-glow)",
                       }
-                    : { color: "var(--color-text-3)", background: "transparent" }
+                    : isPast
+                    ? {
+                        color: "oklch(0.55 0.010 240)",
+                        background: "transparent",
+                        border: "1px solid transparent",
+                      }
+                    : {
+                        color: "oklch(0.38 0.008 240)",
+                        background: "transparent",
+                        border: "1px solid transparent",
+                      }
                 }
               >
+                {/* 步骤圆圈 */}
                 <span
-                  className="num inline-grid h-[15px] w-[15px] place-items-center rounded-full text-[10px] font-bold"
+                  className="num inline-grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full text-[10px] font-bold"
                   style={
                     isActive
                       ? {
                           background: "var(--color-accent)",
                           color: "oklch(0.08 0 0)",
-                          boxShadow: "0 0 10px -1px var(--color-accent-glow)",
+                          boxShadow: "0 0 12px -2px var(--color-accent-glow)",
+                        }
+                      : isPast
+                      ? {
+                          background: "oklch(0.76 0.09 200 / 0.25)",
+                          color: "oklch(0.65 0.08 200)",
+                          border: "1px solid oklch(0.76 0.09 200 / 0.20)",
                         }
                       : {
-                          background: "oklch(0.26 0.014 242)",
-                          color: "var(--color-text-3)",
+                          background: "oklch(0.16 0.010 240)",
+                          color: "oklch(0.38 0.008 240)",
+                          border: "1px solid oklch(0.82 0.16 200 / 0.08)",
                         }
                   }
                 >
                   {idx + 1}
                 </span>
-                <span className="whitespace-nowrap">{t(`phase_${phase}`)}</span>
+                <span className="whitespace-nowrap text-[12px] font-medium">
+                  {t(`phase_${phase}`)}
+                </span>
               </div>
+
+              {/* 连接线 */}
               {idx < PHASE_ORDER.length - 1 && (
                 <div
                   aria-hidden="true"
-                  className="mx-0.5 h-px w-1.5"
+                  className="h-px w-5 shrink-0"
                   style={{
-                    background:
-                      isPastOrActive || nextIsActive
-                        ? "var(--color-accent-soft)"
-                        : "var(--color-hairline-soft)",
+                    background: isPast
+                      ? "linear-gradient(90deg, oklch(0.76 0.09 200 / 0.40), oklch(0.76 0.09 200 / 0.20))"
+                      : isActive
+                      ? "linear-gradient(90deg, oklch(0.76 0.09 200 / 0.30), oklch(0.82 0.16 200 / 0.08))"
+                      : "oklch(0.82 0.16 200 / 0.08)",
                   }}
                 />
               )}

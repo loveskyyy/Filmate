@@ -174,14 +174,16 @@ interface PosterProps {
 function Poster({ project, styleLabel, large = false }: PosterProps) {
   const { t } = useTranslation("dashboard");
   const hue1 = useMemo(() => hashHue(project.name, 17), [project.name]);
-  const aspect = large ? "2.39 / 1" : "2 / 1";
-  const radius = large ? 8 : 6;
+  const aspect = large ? "2.39 / 1" : undefined;
+  const radius = large ? 8 : 0;
   return (
     <div
       className="relative overflow-hidden"
       style={{
         width: "100%",
         aspectRatio: aspect,
+        height: large ? undefined : "100%",
+        minHeight: large ? undefined : 120,
         borderRadius: radius,
         background: `radial-gradient(120% 80% at 30% 30%, oklch(0.55 0.15 ${hue1}) 0%, oklch(0.28 0.08 ${(hue1 + 10) % 360}) 45%, oklch(0.14 0.02 240) 100%)`,
         boxShadow: "inset 0 0 0 1px oklch(1 0 0 / 0.06)",
@@ -374,30 +376,52 @@ function ProjectCard({ project, styleLabel, phaseLabels, t, onDelete }: ProjectC
   );
 
   return (
-    <article className="group relative overflow-hidden rounded-[14px] border border-[oklch(0.82_0.16_200_/_0.10)] bg-bg-grad-a/85 transition-[transform,border-color,box-shadow] duration-200 motion-safe:hover:-translate-y-1 hover:border-[oklch(0.82_0.16_200_/_0.35)] hover:shadow-[0_20px_48px_-20px_oklch(0_0_0_/_0.7),0_0_0_1px_oklch(0.82_0.16_200_/_0.18),0_0_32px_-16px_var(--color-accent-glow)] focus-within:border-[oklch(0.82_0.16_200_/_0.45)] focus-within:shadow-[0_0_0_2px_oklch(0.82_0.16_200_/_0.20)]">
+    <article
+      className="group relative overflow-hidden rounded-[16px] transition-[transform,border-color,box-shadow] duration-200 motion-safe:hover:-translate-y-0.5"
+      style={{
+        border: "1px solid oklch(0.82 0.16 200 / 0.12)",
+        background: "oklch(0.12 0.010 240 / 0.80)",
+        boxShadow: "0 4px 24px -8px oklch(0 0 0 / 0.5)",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.82 0.16 200 / 0.35)";
+        (e.currentTarget as HTMLElement).style.boxShadow = "0 16px 48px -16px oklch(0 0 0 / 0.7), 0 0 32px -16px var(--color-accent-glow)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.82 0.16 200 / 0.12)";
+        (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 24px -8px oklch(0 0 0 / 0.5)";
+      }}
+    >
       <Link
         href={`/app/projects/${project.name}`}
-        className="block w-full text-left text-text no-underline outline-none"
+        className="flex w-full text-left text-text no-underline outline-none"
         aria-label={`${projectDisplayName} · ${styleLabel}${phaseLabel ? ` · ${phaseLabel}` : ""}`}
       >
-        <div className="p-2.5">
-          <Poster project={project} styleLabel={styleLabel} />
+        {/* 左侧海报 - 固定宽度 */}
+        <div className="shrink-0" style={{ width: 140 }}>
+          <div
+            className="h-full"
+            style={{ minHeight: 120 }}
+          >
+            <Poster project={project} styleLabel={styleLabel} />
+          </div>
         </div>
 
-        <div className="px-4 pt-1 pb-3.5">
-          <div className="mb-1.5 flex items-baseline justify-between gap-2">
-            <h3 className="truncate text-[17px] font-semibold tracking-tight text-text">
+        {/* 右侧信息区 */}
+        <div className="flex min-w-0 flex-1 flex-col px-4 py-3.5">
+          <div className="mb-1 flex items-start justify-between gap-2">
+            <h3 className="truncate text-[16px] font-semibold tracking-tight text-text leading-tight">
               {projectDisplayName}
             </h3>
             <span
-              className="shrink-0 font-mono text-[9.5px] uppercase tracking-[0.08em] text-text-3"
+              className="shrink-0 font-mono text-[9px] uppercase tracking-[0.08em] text-text-3 mt-0.5"
               title={styleLabel}
             >
               {styleLabel}
             </span>
           </div>
 
-          <div className="mb-3 flex items-center gap-2">
+          <div className="mb-2 flex items-center gap-2">
             <PhasePill phase={phase} label={phaseLabel} />
           </div>
 
@@ -536,17 +560,27 @@ function NowEditingCard({ project, styleLabel, phaseLabels, t }: NowEditingCardP
 
   return (
     <article
-      className="grid overflow-hidden rounded-[16px] border border-[oklch(0.82_0.16_200_/_0.15)] bg-bg-grad-a shadow-[0_0_0_1px_oklch(0.82_0.16_200_/_0.05),0_24px_56px_-24px_oklch(0_0_0_/_0.6)]"
+      className="relative overflow-hidden rounded-[20px]"
       style={{
-        gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)",
-        boxShadow:
-          "0 30px 80px -40px oklch(0 0 0 / 0.7), inset 0 1px 0 oklch(1 0 0 / 0.04)",
+        border: "1px solid oklch(0.82 0.16 200 / 0.20)",
+        background: "oklch(0.11 0.010 240 / 0.90)",
+        boxShadow: "0 32px 80px -32px oklch(0 0 0 / 0.8), 0 0 0 1px oklch(0.82 0.16 200 / 0.08), inset 0 1px 0 oklch(1 0 0 / 0.04)",
       }}
     >
-      <div className="p-3.5">
+      {/* 顶部青蓝装饰线 */}
+      <div
+        aria-hidden
+        className="absolute top-0 left-0 right-0 h-[2px]"
+        style={{ background: "linear-gradient(90deg, transparent, var(--color-accent), var(--color-accent-2), transparent)" }}
+      />
+      <div
+        className="grid"
+        style={{ gridTemplateColumns: "minmax(0, 1.6fr) minmax(0, 1fr)" }}
+      >
+      <div className="p-4">
         <Poster project={project} styleLabel={styleLabel} large />
       </div>
-      <div className="relative flex flex-col px-7 pb-6 pt-6">
+      <div className="relative flex flex-col px-8 pb-7 pt-7">
         <span
           aria-hidden
           className="font-editorial pointer-events-none absolute right-[-6px] top-2 italic"
@@ -663,6 +697,7 @@ function NowEditingCard({ project, styleLabel, phaseLabels, t }: NowEditingCardP
           </Link>
         </div>
       </div>
+      </div>
     </article>
   );
 }
@@ -682,73 +717,52 @@ function PlaceholderTile({ onClick, title, kicker, icon, ariaLabel }: Placeholde
     <button
       type="button"
       onClick={onClick}
-      className="group relative flex h-full min-h-[380px] flex-col overflow-hidden rounded-[14px] border border-dashed border-[oklch(0.82_0.16_200_/_0.12)] bg-bg-grad-a/55 text-left transition-colors hover:border-[oklch(0.82_0.16_200_/_0.35)] hover:bg-bg-grad-a/75 hover:shadow-[0_0_24px_-8px_var(--color-accent-glow)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      className="group relative flex overflow-hidden rounded-[16px] text-left transition-[border-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      style={{
+        border: "1px dashed oklch(0.82 0.16 200 / 0.15)",
+        background: "oklch(0.11 0.008 240 / 0.60)",
+        minHeight: 120,
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.82 0.16 200 / 0.40)";
+        (e.currentTarget as HTMLElement).style.boxShadow = "0 0 24px -8px var(--color-accent-glow)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.82 0.16 200 / 0.15)";
+        (e.currentTarget as HTMLElement).style.boxShadow = "none";
+      }}
       aria-label={ariaLabel ?? title}
     >
-      <div className="p-2.5">
-        <div
-          className="relative grid place-items-center overflow-hidden rounded-[6px] border border-dashed border-hairline"
+      {/* 左侧图标区 */}
+      <div
+        className="flex shrink-0 items-center justify-center"
+        style={{
+          width: 140,
+          background: "radial-gradient(120% 80% at 30% 30%, oklch(0.26 0.06 200 / 0.35) 0%, transparent 60%)",
+          borderRight: "1px dashed oklch(0.82 0.16 200 / 0.12)",
+        }}
+      >
+        <span
+          aria-hidden
+          className="grid h-12 w-12 place-items-center rounded-[12px] transition-transform motion-safe:group-hover:scale-110"
           style={{
-            aspectRatio: "2 / 1",
-            background:
-              "radial-gradient(120% 80% at 30% 30%, oklch(0.26 0.06 200 / 0.45) 0%, transparent 60%), oklch(0.15 0.012 240 / 0.55)",
+            background: "linear-gradient(180deg, oklch(0.28 0.04 238), oklch(0.20 0.02 240))",
+            border: "1px solid oklch(0.76 0.09 200 / 0.35)",
+            boxShadow: "0 8px 22px -14px var(--color-accent)",
+            color: "var(--color-accent-2)",
           }}
         >
-          <div className="flex flex-col items-center gap-2.5 transition-transform motion-safe:group-hover:-translate-y-0.5">
-            <span
-              aria-hidden
-              className="grid h-12 w-12 place-items-center rounded-[12px]"
-              style={{
-                background:
-                  "linear-gradient(180deg, oklch(0.30 0.04 238), oklch(0.22 0.02 240))",
-                border: "1px solid oklch(0.76 0.09 200 / 0.4)",
-                boxShadow:
-                  "inset 0 1px 0 oklch(1 0 0 / 0.06), 0 8px 22px -14px var(--color-accent)",
-                color: "var(--color-accent-2)",
-              }}
-            >
-              {icon}
-            </span>
-            <div className="text-center">
-              <div className="text-[15px] font-semibold tracking-tight text-text-2 transition-colors group-hover:text-text">
-                {title}
-              </div>
-              <div className="mt-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em] text-text-3">
-                {kicker}
-              </div>
-            </div>
-          </div>
-        </div>
+          {icon}
+        </span>
       </div>
 
-      <div aria-hidden className="space-y-3 px-4 pt-1 pb-3.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="block h-3 w-1/2 rounded-[3px] bg-hairline/85" />
-          <span className="block h-2 w-12 rounded-[3px] bg-hairline/65" />
+      {/* 右侧文字区 */}
+      <div className="flex flex-1 flex-col justify-center px-5 py-4">
+        <div className="text-[15px] font-semibold tracking-tight text-text-2 transition-colors group-hover:text-text">
+          {title}
         </div>
-        <span className="inline-block h-[18px] w-16 rounded-full border border-dashed border-hairline" />
-        <div className="flex gap-[3px]">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <span key={i} className="h-[3px] flex-1 rounded-[1.5px] bg-hairline/65" />
-          ))}
-        </div>
-        <div
-          className="grid grid-cols-4 overflow-hidden rounded-[7px] border border-dashed border-hairline"
-          style={{ background: "oklch(0.16 0.010 240 / 0.45)" }}
-        >
-          {[0, 1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className={"px-1.5 py-2.5" + (i < 3 ? " border-r border-dashed border-hairline" : "")}
-            >
-              <span className="mx-auto block h-1.5 w-8 rounded-[1.5px] bg-hairline/75" />
-              <span className="mx-auto mt-1.5 block h-2 w-6 rounded-[1.5px] bg-hairline/55" />
-            </div>
-          ))}
-        </div>
-        <div className="flex items-center gap-2.5">
-          <span className="h-[3px] flex-1 rounded-[1.5px] bg-hairline/55" />
-          <span className="h-2 w-7 rounded-[3px] bg-hairline/70" />
+        <div className="mt-1 font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em] text-text-3">
+          {kicker}
         </div>
       </div>
     </button>
@@ -798,31 +812,37 @@ function TopBar({
     <div
       className="sticky top-0 z-30"
       style={{
-        background:
-          "linear-gradient(180deg, oklch(0.17 0.014 242 / 0.92), oklch(0.14 0.012 238 / 0.88))",
-        backdropFilter: "blur(28px) saturate(1.5)",
-        WebkitBackdropFilter: "blur(28px) saturate(1.5)",
-        borderBottom: "1px solid oklch(0.82 0.16 200 / 0.12)",
-        boxShadow:
-          "inset 0 1px 0 oklch(0.82 0.16 200 / 0.04), 0 6px 24px -12px oklch(0 0 0 / 0.55)",
+        background: "oklch(0.09 0.008 240 / 0.97)",
+        backdropFilter: "blur(32px) saturate(1.8)",
+        WebkitBackdropFilter: "blur(32px) saturate(1.8)",
+        borderBottom: "2px solid oklch(0.82 0.16 200 / 0.20)",
+        boxShadow: "0 8px 40px -8px oklch(0 0 0 / 0.8)",
       }}
     >
-      <div className="mx-auto flex max-w-[1320px] items-center gap-4 px-6 py-3">
-        <div className="flex items-center gap-2.5">
+      <div className="mx-auto flex max-w-[1320px] items-center gap-6 px-8 py-4">
+        <div className="flex items-center gap-3 shrink-0">
           <img
             src="/android-chrome-192x192.png"
             alt={BRAND.name}
-            className="h-8 w-8 rounded-lg"
+            className="h-9 w-9 rounded-xl"
+            style={{ boxShadow: "0 0 0 1px oklch(0.82 0.16 200 / 0.30), 0 0 20px -4px var(--color-accent-glow)" }}
           />
           <span
-            className="font-sans text-[17px] font-medium tracking-[-0.012em] text-text"
+            className="font-mono text-[12px] font-bold uppercase"
+            style={{ color: "var(--color-text)", letterSpacing: "0.22em" }}
             aria-hidden
           >
             {BRAND.name}
           </span>
         </div>
 
-        <label className="ml-2 flex w-[min(420px,100%)] items-center gap-2 rounded-lg border border-hairline-soft bg-bg/55 px-3 py-1.5 transition-colors focus-within:border-accent/60">
+        <label
+          className="flex flex-1 max-w-[500px] mx-auto items-center gap-2 rounded-full px-4 py-2 transition-colors focus-within:border-accent/60"
+          style={{
+            background: "oklch(0.14 0.012 240 / 0.75)",
+            border: "1px solid oklch(0.82 0.16 200 / 0.18)",
+          }}
+        >
             <Search className="h-3.5 w-3.5 text-text-3" />
             <input
               ref={searchInputRef}
@@ -847,7 +867,7 @@ function TopBar({
             </kbd>
         </label>
 
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={onAssets}
@@ -984,68 +1004,80 @@ function HeroStrip({ totals, t }: HeroStripProps) {
   ];
 
   return (
-    <div className="mx-auto flex max-w-[1320px] items-stretch justify-between gap-6 px-6 pb-5 pt-6">
-      <div className="min-w-0 flex-1">
-        <h1
-          className="font-editorial m-0"
-          style={{
-            fontSize: 46,
-            fontWeight: 400,
-            lineHeight: 1.22,
-            letterSpacing: "-0.012em",
-            color: "var(--color-text)",
-          }}
-        >
-          <Typewriter
-            once="lobby-hero"
-            segments={
-              [
-                { text: t(`dashboard:${greetingKey}`), after: <br /> },
-                {
-                  text: subtitle,
-                  style: { fontStyle: "italic", color: "var(--color-accent-2)" },
-                },
-              ] satisfies TypewriterSegment[]
-            }
+    <div
+      style={{
+        background: "linear-gradient(180deg, oklch(0.11 0.010 240 / 0.95) 0%, transparent 100%)",
+        borderBottom: "1px solid oklch(0.82 0.16 200 / 0.10)",
+      }}
+    >
+      <div className="mx-auto max-w-[1320px] px-8 pt-10 pb-8">
+        {/* 顶部眉标行 */}
+        <div className="mb-4 flex items-center gap-3">
+          <span
+            className="font-mono text-[10px] font-bold uppercase tracking-[0.20em]"
+            style={{ color: "var(--color-accent-2)" }}
+          >
+            {t("dashboard:lobby_hero_eyebrow")}
+          </span>
+          <span
+            aria-hidden
+            className="h-px flex-1"
+            style={{ background: "linear-gradient(90deg, oklch(0.82 0.16 200 / 0.30), transparent)" }}
           />
-        </h1>
-        <p className="m-0 mt-2.5 max-w-[560px] text-[13px] leading-[1.55] text-text-3">
-          {summaryLine}
-        </p>
-      </div>
-      <div className="flex flex-col items-end justify-between gap-2.5">
-        <div className="mt-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-accent-2">
-          {t("dashboard:lobby_hero_eyebrow")} — {dateLine}
+          <span className="font-mono text-[10px] text-text-3">{dateLine}</span>
         </div>
-        <div
-          className="flex items-stretch overflow-hidden rounded-[10px] border border-hairline-soft"
-          style={{ background: "oklch(0.14 0.012 240 / 0.45)" }}
-        >
-          {stats.map((s, i) => (
-            <div
-              key={s.key}
-              className={
-                "px-4 py-2.5" +
-                (i < stats.length - 1 ? " border-r border-hairline-soft" : "")
-              }
+
+        {/* 主标题 + 统计数字横排 */}
+        <div className="flex items-end justify-between gap-8">
+          <div className="min-w-0 flex-1">
+            <h1
+              className="font-editorial m-0"
+              style={{
+                fontSize: 62,
+                fontWeight: 400,
+                lineHeight: 1.1,
+                letterSpacing: "-0.02em",
+                color: "var(--color-text)",
+              }}
             >
-              <div className="font-mono text-[9px] font-bold tracking-[0.14em] text-text-3">
-                {s.label}
-              </div>
+              <Typewriter
+                once="lobby-hero"
+                segments={
+                  [
+                    { text: t(`dashboard:${greetingKey}`), after: <br /> },
+                    {
+                      text: subtitle,
+                      style: { fontStyle: "italic", color: "var(--color-accent-2)" },
+                    },
+                  ] satisfies TypewriterSegment[]
+                }
+              />
+            </h1>
+            <p className="m-0 mt-3 max-w-[520px] text-[13.5px] leading-[1.6] text-text-3">
+              {summaryLine}
+            </p>
+          </div>
+
+          {/* 统计数字 - 竖向分隔线风格 */}
+          <div className="flex shrink-0 items-stretch gap-0 overflow-hidden rounded-[12px]" style={{ border: "1px solid oklch(0.82 0.16 200 / 0.15)", background: "oklch(0.12 0.010 240 / 0.60)" }}>
+            {stats.map((s, i) => (
               <div
-                className="font-editorial mt-0.5 tabular-nums"
-                style={{
-                  fontSize: 30,
-                  fontWeight: 400,
-                  lineHeight: 1,
-                  letterSpacing: "-0.012em",
-                  ...s.tone,
-                }}
+                key={s.key}
+                className={"flex flex-col items-center justify-center px-6 py-4" + (i < stats.length - 1 ? " border-r" : "")}
+                style={i < stats.length - 1 ? { borderColor: "oklch(0.82 0.16 200 / 0.12)" } : undefined}
               >
-                {s.value}
+                <div
+                  className="font-editorial tabular-nums"
+                  style={{ fontSize: 40, fontWeight: 400, lineHeight: 1, letterSpacing: "-0.02em", ...s.tone }}
+                >
+                  {s.value}
+                </div>
+                <div className="mt-1.5 font-mono text-[9.5px] font-bold uppercase tracking-[0.14em] text-text-3">
+                  {s.label}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -1074,17 +1106,15 @@ function FilterPills({ active, onChange, counts, phaseLabels, t }: FilterPillsPr
 
   return (
     <div
-      className="sticky z-20 border-b border-hairline backdrop-blur-md"
+      className="sticky z-20"
       style={{
-        top: "var(--lobby-topbar-h, 57px)",
-        background:
-          "linear-gradient(180deg, oklch(0.17 0.014 242 / 0.88), oklch(0.14 0.012 238 / 0.82))",
-        backdropFilter: "blur(16px) saturate(1.3)",
-        borderTopWidth: 1,
-        borderTopColor: "var(--color-hairline-soft)",
+        top: "var(--lobby-topbar-h, 65px)",
+        background: "oklch(0.10 0.008 240 / 0.92)",
+        backdropFilter: "blur(20px) saturate(1.5)",
+        borderBottom: "1px solid oklch(0.82 0.16 200 / 0.12)",
       }}
     >
-      <div className="mx-auto flex max-w-[1320px] items-center gap-1.5 px-6 py-2.5">
+      <div className="mx-auto flex max-w-[1320px] items-center gap-0 px-8">
         {pills.map((c) => {
           const isActive = active === c.key;
           return (
@@ -1093,19 +1123,16 @@ function FilterPills({ active, onChange, counts, phaseLabels, t }: FilterPillsPr
               type="button"
               onClick={() => onChange(c.key)}
               aria-pressed={isActive}
-              className={
-                "inline-flex items-center rounded-full px-3 py-1 text-[11.5px] font-medium backdrop-blur-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent " +
-                (isActive
-                  ? "border border-accent/40 bg-accent/20 text-text shadow-[0_0_12px_-4px_var(--color-accent-glow)]"
-                  : "border border-hairline-soft bg-[oklch(0.18_0.014_242_/_0.7)] text-text-3 hover:border-[oklch(0.82_0.16_200_/_0.25)] hover:bg-[oklch(0.20_0.014_242_/_0.78)] hover:text-text-2")
-              }
+              className="relative inline-flex items-center gap-1.5 px-4 py-3.5 text-[12px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              style={{
+                color: isActive ? "var(--color-text)" : "oklch(0.55 0.010 240)",
+                borderBottom: isActive ? "2px solid var(--color-accent)" : "2px solid transparent",
+              }}
             >
               {c.label}
               <span
-                className={
-                  "ml-1.5 font-mono tabular-nums " +
-                  (isActive ? "text-accent-2" : "text-text-4")
-                }
+                className="font-mono text-[10px] tabular-nums"
+                style={{ color: isActive ? "var(--color-accent-2)" : "oklch(0.40 0.008 240)" }}
               >
                 {c.n}
               </span>
@@ -1113,7 +1140,7 @@ function FilterPills({ active, onChange, counts, phaseLabels, t }: FilterPillsPr
           );
         })}
         <div className="flex-1" />
-        <span className="font-mono text-[10.5px] uppercase tracking-[0.06em] text-text-3">
+        <span className="font-mono text-[10px] uppercase tracking-[0.10em] text-text-3">
           {t("dashboard:lobby_sort_recent")}
         </span>
       </div>
@@ -1372,10 +1399,10 @@ export function ProjectsPage() {
       className="relative min-h-screen text-text"
       style={
         {
-          // FilterPills 的 sticky top 读这个变量；TopBar = logo h-8 (32) + py-3 (24) + 1px border
-          "--lobby-topbar-h": "57px",
+          // FilterPills 的 sticky top 读这个变量；TopBar = logo h-9 (36) + py-4 (32) + 2px border = 70px
+          "--lobby-topbar-h": "70px",
           background:
-            "radial-gradient(1100px 540px at 8% -10%, oklch(0.32 0.05 200 / 0.28), transparent 55%), radial-gradient(900px 500px at 100% 110%, oklch(0.26 0.04 260 / 0.25), transparent 55%), linear-gradient(180deg, var(--color-bg-grad-a), var(--color-bg-grad-b))",
+            "radial-gradient(1200px 600px at 5% -5%, oklch(0.28 0.06 200 / 0.35), transparent 50%), radial-gradient(800px 400px at 95% 100%, oklch(0.22 0.04 240 / 0.30), transparent 50%), oklch(0.08 0.006 240)",
         } as CSSProperties
       }
     >
@@ -1415,14 +1442,14 @@ export function ProjectsPage() {
         />
       ) : null}
 
-      <main className="mx-auto max-w-[1320px] px-6 pt-6 pb-16">
+      <main className="mx-auto max-w-[1320px] px-8 pt-8 pb-20">
         {projectsLoading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-6 w-6 motion-safe:animate-spin text-accent" />
             <span className="ml-2 text-text-3">{t("dashboard:loading_projects")}</span>
           </div>
         ) : projects.length === 0 ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="flex flex-col gap-3">
             <NewProjectTile onClick={() => setShowCreateModal(true)} t={t} />
           </div>
         ) : (
@@ -1474,7 +1501,7 @@ export function ProjectsPage() {
                     {t("dashboard:lobby_library_count", { count: restProjects.length })}
                   </span>
                 </div>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="flex flex-col gap-3">
                   {restProjects.map((project) => (
                     <ProjectCard
                       key={project.name}
