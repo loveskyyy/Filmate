@@ -62,6 +62,7 @@ async def auth_status():
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     _t: Translator,
+    session: AsyncSession = Depends(get_async_session),
 ):
     """用户登录
 
@@ -69,7 +70,7 @@ async def login_for_access_token(
     ``AUTH_ENABLED=false`` 时跳过凭据校验，直接签发 token，让前端
     LoginPage 即便被打开也能正常跳转主界面。
     """
-    if is_auth_enabled() and not check_credentials(form_data.username, form_data.password):
+    if is_auth_enabled() and not await check_credentials(form_data.username, form_data.password, session):
         logger.warning("登录失败: 用户名或密码错误 (用户: %s)", form_data.username)
         raise HTTPException(
             status_code=401,

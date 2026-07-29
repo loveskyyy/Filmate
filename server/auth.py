@@ -21,6 +21,7 @@ from fastapi import Depends, HTTPException, Query
 from fastapi.security import OAuth2PasswordBearer
 from pwdlib import PasswordHash
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from lib import PROJECT_ROOT
 
@@ -184,7 +185,7 @@ def _get_password_hash() -> str:
     return _cached_password_hash
 
 
-def check_credentials(username: str, password: str) -> bool:
+async def check_credentials(username: str, password: str, session: AsyncSession) -> bool:
     """校验用户名密码（使用哈希比对）
 
     从 AUTH_USERNAME（默认 admin）和 AUTH_PASSWORD 环境变量读取。
@@ -207,25 +208,15 @@ def check_credentials(username: str, password: str) -> bool:
         return True
 
     # 如果环境变量不匹配，尝试查询数据库用户
-    try:
-        import asyncio
+    from sqlalchemy import select
 
-        from sqlalchemy import select
+    from lib.db.models.user import User
 
-        from lib.db import async_session_factory
-        from lib.db.models.user import User
-
-        async def _check_db():
-            async with async_session_factory() as session:
-                result = await session.execute(select(User).where(User.username == username))
-                user = result.scalar_one_or_none()
-                if user and user.hashed_password:
-                    return _password_hash.verify(password, user.hashed_password)
-                return False
-
-        return asyncio.run(_check_db())
-    except Exception:
-        return False
+    result = await session.execute(select(User).where(User.username == username))
+    user = result.scalar_one_or_none()
+    if user and user.hashed_password:
+        return _password_hash.verify(password, user.hashed_password)
+    return False
 
 
 def ensure_auth_password(env_path: str | None = None) -> str:

@@ -78,7 +78,7 @@ async def login(data: LoginRequest, session: AsyncSession = Depends(get_session)
     legacy_hash = user.hashed_password
     should_upgrade_hash = legacy_hash is None
     if legacy_hash is None:
-        password_ok = check_credentials(data.username, data.password)
+        password_ok = await check_credentials(data.username, data.password, session)
     elif len(legacy_hash) == 64 and all(char in string.hexdigits for char in legacy_hash):
         expected_legacy_hash = hashlib.sha256(data.password.encode("utf-8")).hexdigest()
         password_ok = hmac.compare_digest(expected_legacy_hash, legacy_hash)
