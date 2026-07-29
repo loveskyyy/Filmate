@@ -133,7 +133,7 @@ export function SystemConfigPage() {
         className="shrink-0 sticky top-0 z-30"
         style={{
           background:
-            "linear-gradient(180deg, oklch(0.10 0.005 240 / 0.60), oklch(0.14 0.012 238 / 0.50))",
+            "linear-gradient(180deg, oklch(0.18 0.014 242 / 0.60), oklch(0.14 0.012 238 / 0.50))",
           backdropFilter: "blur(28px) saturate(1.5)",
           WebkitBackdropFilter: "blur(28px) saturate(1.5)",
           borderBottom: "1px solid var(--color-hairline)",

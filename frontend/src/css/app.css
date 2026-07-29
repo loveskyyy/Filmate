@@ -9,12 +9,13 @@ body {
     font-family: var(--font-sans);
 }
 
-/* 全应用 shell 背景：纯黑 + 橙红光晕 */
+/* 全应用 shell 背景：深邃电影感暗黑背景，带青蓝色光晕 */
 .app-shell {
     background:
-        radial-gradient(900px 600px at 0% 0%, oklch(0.35 0.14 42 / 0.10), transparent 55%),
-        radial-gradient(700px 500px at 100% 100%, oklch(0.30 0.10 30 / 0.08), transparent 55%),
-        oklch(0.06 0.004 240);
+        radial-gradient(1100px 550px at 5% -8%, oklch(0.35 0.12 200 / 0.16), transparent 50%),
+        radial-gradient(900px 500px at 96% 108%, oklch(0.28 0.08 220 / 0.16), transparent 52%),
+        radial-gradient(600px 400px at 50% 100%, oklch(0.20 0.06 240 / 0.10), transparent 60%),
+        linear-gradient(180deg, var(--color-bg-grad-a), var(--color-bg-grad-b));
     background-attachment: fixed;
 }
 
@@ -30,26 +31,24 @@ body {
     min-height: 100vh;
 }
 
-/* 侧边栏 — 更深的纯黑背景，明显的右侧边框 */
 .app-sidebar {
-    border-right: 1px solid oklch(1 0 0 / 0.10);
-    background: oklch(0.05 0.003 235 / 0.98);
-    backdrop-filter: blur(20px) saturate(1.2);
-    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border-right: 1px solid var(--color-hairline);
+    background: linear-gradient(180deg, oklch(0.175 0.014 240 / 0.65), oklch(0.155 0.012 238 / 0.55));
+    backdrop-filter: blur(14px) saturate(1.3);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3);
 }
 
-/* 面板 */
 .app-panel {
-    border: 1px solid oklch(1 0 0 / 0.07);
-    background: oklch(0.09 0.005 240 / 0.85);
+    border: 1px solid var(--color-hairline-soft);
+    background: linear-gradient(180deg, oklch(0.20 0.014 242 / 0.75), oklch(0.16 0.012 238 / 0.65));
     backdrop-filter: blur(12px) saturate(1.2);
     -webkit-backdrop-filter: blur(12px) saturate(1.2);
 }
 
 .app-panel-strong {
-    border: 1px solid oklch(1 0 0 / 0.14);
-    background: oklch(0.09 0.005 240 / 0.97);
-    box-shadow: 0 24px 60px oklch(0 0 0 / 0.70);
+    border: 1px solid var(--color-hairline-strong);
+    background: linear-gradient(180deg, oklch(0.20 0.014 242 / 0.95), oklch(0.14 0.012 238 / 0.88));
+    box-shadow: 0 24px 50px oklch(0 0 0 / 0.55);
 }
 
 .app-menu-item {
@@ -60,7 +59,6 @@ body {
     transform: translateX(2px);
 }
 
-/* 网格背景 — 橙色调 */
 .app-grid-bg {
     position: relative;
 }
@@ -70,10 +68,10 @@ body {
     position: absolute;
     inset: 0;
     background-image:
-        linear-gradient(to right, oklch(0.75 0.18 42 / 0.06) 1px, transparent 1px),
-        linear-gradient(to bottom, oklch(0.75 0.18 42 / 0.06) 1px, transparent 1px);
+        linear-gradient(to right, oklch(0.82 0.16 200 / 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, oklch(0.82 0.16 200 / 0.05) 1px, transparent 1px);
     background-size: 32px 32px;
-    opacity: 0.35;
+    opacity: 0.30;
     pointer-events: none;
 }
 
@@ -103,20 +101,19 @@ body {
     }
 }
 
-/* Landing 页 — 橙红光晕 */
 .landing-shell {
     background:
-        radial-gradient(circle at 14% 11%, oklch(0.75 0.18 42 / 0.18), transparent 34%),
-        radial-gradient(circle at 88% 16%, oklch(0.65 0.14 30 / 0.12), transparent 32%),
-        oklch(0.06 0.004 240);
+        radial-gradient(circle at 14% 11%, oklch(0.82 0.16 200 / 0.18), transparent 34%),
+        radial-gradient(circle at 88% 16%, oklch(0.70 0.14 210 / 0.14), transparent 32%),
+        linear-gradient(180deg, var(--color-bg-grad-a), var(--color-bg-grad-b));
 }
 
 .landing-grid {
     position: absolute;
     inset: 0;
     background-image:
-        linear-gradient(to right, oklch(0.75 0.18 42 / 0.07) 1px, transparent 1px),
-        linear-gradient(to bottom, oklch(0.75 0.18 42 / 0.07) 1px, transparent 1px);
+        linear-gradient(to right, oklch(0.82 0.16 200 / 0.06) 1px, transparent 1px),
+        linear-gradient(to bottom, oklch(0.82 0.16 200 / 0.06) 1px, transparent 1px);
     background-size: 50px 50px;
     mask-image: radial-gradient(circle at 50% 42%, #000 26%, transparent 86%);
     opacity: 0.28;
@@ -126,8 +123,8 @@ body {
     position: absolute;
     inset: 0;
     background-image:
-        linear-gradient(to right, oklch(0.75 0.18 42 / 0.08) 1px, transparent 1px),
-        linear-gradient(to bottom, oklch(0.75 0.18 42 / 0.08) 1px, transparent 1px);
+        linear-gradient(to right, oklch(0.82 0.16 200 / 0.07) 1px, transparent 1px),
+        linear-gradient(to bottom, oklch(0.82 0.16 200 / 0.07) 1px, transparent 1px);
     background-size: 96px 96px;
     transform: perspective(1000px) rotateX(42deg) translateY(42%);
     transform-origin: center bottom;
@@ -152,11 +149,10 @@ body {
     pointer-events: none;
 }
 
-/* 橙红光晕球 */
 .landing-orb-a {
     width: 420px;
     height: 420px;
-    background: oklch(0.75 0.18 42 / 0.28);
+    background: oklch(0.82 0.16 200 / 0.28);
     top: 20%;
     left: 6%;
     animation: float-a 8s ease-in-out infinite;
@@ -165,7 +161,7 @@ body {
 .landing-orb-b {
     width: 340px;
     height: 340px;
-    background: oklch(0.65 0.14 30 / 0.22);
+    background: oklch(0.70 0.14 210 / 0.22);
     right: 8%;
     top: 12%;
     animation: float-b 9s ease-in-out infinite;

@@ -63,7 +63,7 @@ export function ConflictModal({ existing, suggestedName, onResolve }: ConflictMo
         <div
           className="num mt-3 truncate rounded-md px-3 py-2 text-[12px]"
           style={{
-            background: "oklch(0.09 0.004 240 / 0.6)",
+            background: "oklch(0.16 0.010 240 / 0.6)",
             border: "1px solid var(--color-hairline-soft)",
             color: "var(--color-text-2)",
           }}

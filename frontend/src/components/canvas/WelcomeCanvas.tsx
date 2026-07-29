@@ -32,8 +32,10 @@ interface WelcomeCanvasProps {
   onAnalyze?: () => Promise<void>;
 }
 
-const CARD_BG = "oklch(0.07 0.004 240)";
-const CARD_SHADOW = "0 1px 0 oklch(1 0 0 / 0.06), 0 12px 32px -12px oklch(0 0 0 / 0.70)";
+const CARD_BG =
+  "linear-gradient(180deg, oklch(0.20 0.014 242 / 0.60), oklch(0.17 0.012 240 / 0.45))";
+const CARD_SHADOW =
+  "inset 0 1px 0 oklch(1 0 0 / 0.05), 0 8px 24px -10px oklch(0 0 0 / 0.55), 0 0 0 1px oklch(0.82 0.16 200 / 0.06)";
 
 // ---------------------------------------------------------------------------
 // WelcomeCanvas — shown when a project has no overview yet.
@@ -177,35 +179,43 @@ export function WelcomeCanvas({
     <div className="mx-auto w-full max-w-3xl space-y-8">
       {/* Welcome heading — 更大标题 + 左对齐风格 */}
       <header
-        className="relative overflow-hidden px-0 py-8"
+        className="relative overflow-hidden rounded-2xl px-8 py-8"
         style={{
-          borderBottom: "1px solid oklch(1 0 0 / 0.08)",
+          background: "oklch(0.11 0.010 240 / 0.80)",
+          border: "1px solid oklch(0.82 0.16 200 / 0.14)",
+          boxShadow: "0 8px 32px -16px oklch(0 0 0 / 0.6)",
         }}
       >
-        <div className="flex items-center gap-5">
+        {/* 顶部装饰线 */}
+        <div
+          aria-hidden
+          className="absolute top-0 left-0 right-0 h-[2px]"
+          style={{ background: "linear-gradient(90deg, transparent, var(--color-accent), var(--color-accent-2), transparent)" }}
+        />
+        <div className="flex items-start gap-5">
           <span
             aria-hidden
+            className="mt-1 grid h-14 w-14 shrink-0 place-items-center rounded-2xl"
             style={{
-              display: "block",
-              width: 4,
-              height: 52,
-              background: "var(--color-accent)",
-              borderRadius: 2,
-              flexShrink: 0,
+              background: "linear-gradient(135deg, var(--color-accent-2), var(--color-accent))",
+              color: "oklch(0.08 0 0)",
+              boxShadow: "0 10px 32px -10px var(--color-accent-glow), inset 0 1px 0 oklch(1 0 0 / 0.4)",
             }}
-          />
+          >
+            <Sparkles className="h-6 w-6" strokeWidth={2.2} />
+          </span>
           <div>
-            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.22em] mb-2" style={{ color: "var(--color-accent)" }}>
+            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-4 mb-1">
               Project Workspace
             </div>
             <h1
-              className="text-[42px] font-black leading-tight tracking-tight"
-              style={{ color: "var(--color-text)", letterSpacing: "-0.03em", lineHeight: 1.1 }}
+              className="display-serif text-[32px] font-semibold leading-tight tracking-tight"
+              style={{ color: "var(--color-text)", letterSpacing: "-0.02em" }}
             >
               {t("welcome_to_project", { title: displayProjectTitle })}
             </h1>
             <p
-              className="mt-3 text-[13px] leading-relaxed"
+              className="mt-2 text-[13.5px] leading-relaxed"
               style={{ color: "var(--color-text-3)" }}
             >
               {phase === "idle" && t("welcome_idle_desc")}
@@ -230,16 +240,16 @@ export function WelcomeCanvas({
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            className="focus-ring relative w-full overflow-hidden px-8 py-16 text-center transition-all"
+            className="focus-ring relative w-full overflow-hidden rounded-2xl px-8 py-14 text-center transition-all"
             style={{
               border: isDragging
-                ? "1px dashed oklch(0.75 0.18 42 / 0.50)"
-                : "1px dashed oklch(1 0 0 / 0.12)",
+                ? "1px dashed var(--color-accent-soft)"
+                : "1px dashed var(--color-hairline)",
               background: isDragging
-                ? "oklch(0.75 0.18 42 / 0.06)"
+                ? "linear-gradient(180deg, oklch(0.82 0.16 200 / 0.12), oklch(0.82 0.16 200 / 0.04))"
                 : CARD_BG,
               boxShadow: isDragging
-                ? "0 0 0 3px oklch(0.75 0.18 42 / 0.15)"
+                ? "0 0 0 4px var(--color-accent-dim), inset 0 1px 0 oklch(1 0 0 / 0.04)"
                 : CARD_SHADOW,
             }}
           >
@@ -254,16 +264,16 @@ export function WelcomeCanvas({
             />
             <span
               aria-hidden
-              className="mx-auto mb-4 grid h-14 w-14 place-items-center transition-colors"
+              className="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-xl transition-colors"
               style={{
                 background: isDragging
-                  ? "oklch(0.75 0.18 42 / 0.15)"
-                  : "oklch(0.08 0.005 240)",
+                  ? "var(--color-accent-dim)"
+                  : "oklch(0.18 0.014 242 / 0.65)",
                 border: isDragging
-                  ? "1px solid oklch(0.75 0.18 42 / 0.40)"
-                  : "1px solid oklch(1 0 0 / 0.10)",
+                  ? "1px solid var(--color-accent-soft)"
+                  : "1px solid var(--color-hairline-soft)",
                 color: isDragging
-                  ? "var(--color-accent)"
+                  ? "var(--color-accent-2)"
                   : "var(--color-text-3)",
               }}
             >
@@ -524,7 +534,7 @@ export function WelcomeCanvas({
           style={{
             border: "1px solid var(--color-accent-soft)",
             background:
-              "linear-gradient(180deg, oklch(0.75 0.18 42 / 0.10), oklch(0.75 0.18 42 / 0.04))",
+              "linear-gradient(180deg, oklch(0.76 0.09 200 / 0.10), oklch(0.76 0.09 200 / 0.04))",
             boxShadow:
               "0 0 0 1px var(--color-accent-dim), inset 0 1px 0 oklch(1 0 0 / 0.05)",
           }}
@@ -556,7 +566,7 @@ export function WelcomeCanvas({
           </p>
           <div
             className="relative mx-auto mt-5 h-1 w-56 overflow-hidden rounded-full"
-            style={{ background: "oklch(0.09 0.004 240 / 0.7)" }}
+            style={{ background: "oklch(0.16 0.010 240 / 0.7)" }}
           >
             <div
               className="absolute inset-y-0 w-1/3 rounded-full animate-progress-pulse"

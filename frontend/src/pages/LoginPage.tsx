@@ -121,23 +121,23 @@ export function LoginPage() {
     <div
       data-testid="login-page"
       className="relative flex min-h-screen overflow-hidden text-text"
-      style={{ background: "oklch(0.04 0.002 240)" }}
+      style={{ background: "oklch(0.07 0.006 240)" }}
     >
       {/* ============ 左侧品牌区 ============ */}
       <div
         className="relative hidden flex-col justify-between overflow-hidden lg:flex"
         style={{
-          width: "52%",
-          background: "oklch(0.06 0.003 240)",
-          borderRight: "1px solid oklch(1 0 0 / 0.07)",
+          width: "55%",
+          background: "linear-gradient(135deg, oklch(0.10 0.012 240) 0%, oklch(0.08 0.008 220) 100%)",
+          borderRight: "1px solid oklch(0.82 0.16 200 / 0.12)",
         }}
       >
-        {/* 橙红光晕 */}
+        {/* 背景光晕 */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0"
           style={{
-            background: "radial-gradient(ellipse 70% 60% at 20% 60%, oklch(0.75 0.18 42 / 0.08) 0%, transparent 60%), radial-gradient(ellipse 50% 40% at 80% 20%, oklch(0.85 0.14 55 / 0.05) 0%, transparent 55%)",
+            background: "radial-gradient(ellipse 80% 60% at 30% 40%, oklch(0.55 0.15 200 / 0.12) 0%, transparent 65%), radial-gradient(ellipse 60% 50% at 70% 80%, oklch(0.45 0.12 240 / 0.08) 0%, transparent 60%)",
           }}
         />
 
@@ -146,25 +146,25 @@ export function LoginPage() {
           aria-hidden
           className="pointer-events-none absolute inset-0"
           style={{
-            backgroundImage: "linear-gradient(oklch(1 0 0 / 0.03) 1px, transparent 1px), linear-gradient(90deg, oklch(1 0 0 / 0.03) 1px, transparent 1px)",
-            backgroundSize: "80px 80px",
+            backgroundImage: "linear-gradient(oklch(0.82 0.16 200 / 0.04) 1px, transparent 1px), linear-gradient(90deg, oklch(0.82 0.16 200 / 0.04) 1px, transparent 1px)",
+            backgroundSize: "60px 60px",
           }}
         />
 
         {/* 顶部 Logo */}
         <div className="relative z-10 flex items-center gap-3 p-10">
           <div
-            className="grid h-10 w-10 place-items-center"
+            className="grid h-10 w-10 place-items-center rounded-xl"
             style={{
-              background: "var(--color-accent)",
-              boxShadow: "0 0 24px -4px oklch(0.75 0.18 42 / 0.50)",
+              background: "linear-gradient(135deg, var(--color-accent), var(--color-accent-2))",
+              boxShadow: "0 0 24px -4px var(--color-accent-glow)",
             }}
           >
-            <Film className="h-5 w-5" style={{ color: "oklch(0.04 0 0)" }} />
+            <Film className="h-5 w-5" style={{ color: "oklch(0.08 0 0)" }} />
           </div>
           <span
-            className="font-mono text-[14px] font-bold uppercase tracking-[0.18em]"
-            style={{ color: "var(--color-text-2)", letterSpacing: "0.18em" }}
+            className="font-editorial text-[22px] tracking-tight text-text"
+            style={{ letterSpacing: "-0.02em" }}
           >
             {BRAND.name}
           </span>
@@ -172,39 +172,29 @@ export function LoginPage() {
 
         {/* 中央大标题 */}
         <div className="relative z-10 px-10 py-12">
-          {/* 装饰性大字 */}
+          {/* 装饰性大数字 */}
           <div
             aria-hidden
-            className="pointer-events-none mb-4 select-none font-black"
+            className="font-editorial pointer-events-none mb-6 select-none"
             style={{
-              fontSize: 140,
-              lineHeight: 0.9,
-              color: "oklch(1 0 0 / 0.03)",
-              letterSpacing: "-0.05em",
+              fontSize: 120,
+              lineHeight: 1,
+              color: "oklch(0.82 0.16 200 / 0.06)",
+              letterSpacing: "-0.04em",
             }}
           >
-            FILM
+            AI
           </div>
 
-          <div
-            aria-hidden
-            style={{
-              width: 48,
-              height: 3,
-              background: "var(--color-accent)",
-              marginBottom: 24,
-            }}
-          />
-
           <h2
-            className="font-black text-text"
-            style={{ fontSize: 52, lineHeight: 1.05, letterSpacing: "-0.03em" }}
+            className="font-editorial mb-4 text-text"
+            style={{ fontSize: 48, lineHeight: 1.1, letterSpacing: "-0.02em" }}
           >
             智能影视
             <br />
-            <span style={{ color: "var(--color-accent)" }}>创作平台</span>
+            <span style={{ color: "var(--color-accent-2)", fontStyle: "italic" }}>创作平台</span>
           </h2>
-          <p className="mt-5 max-w-[360px] text-[13px] leading-[1.8]" style={{ color: "var(--color-text-4)" }}>
+          <p className="max-w-[380px] text-[14px] leading-[1.7] text-text-3">
             {BRAND.tagline ?? "从剧本到分镜，AI 全程辅助创作。让每一个创意都能高效落地。"}
           </p>
 
@@ -217,11 +207,11 @@ export function LoginPage() {
             ].map((feat) => (
               <div
                 key={feat.label}
-                className="inline-flex items-center gap-1.5 rounded-none px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em]"
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium"
                 style={{
-                  background: "oklch(0.75 0.18 42 / 0.08)",
-                  border: "1px solid oklch(0.75 0.18 42 / 0.20)",
-                  color: "var(--color-accent)",
+                  background: "oklch(0.76 0.09 200 / 0.12)",
+                  border: "1px solid oklch(0.76 0.09 200 / 0.20)",
+                  color: "var(--color-accent-2)",
                 }}
               >
                 {feat.icon}
@@ -233,7 +223,7 @@ export function LoginPage() {
 
         {/* 底部版权 */}
         <div className="relative z-10 p-10">
-          <p className="font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color: "var(--color-text-4)" }}>
+          <p className="font-mono text-[10px] text-text-4">
             © {new Date().getFullYear()} {BRAND.name} · AI-Powered Film Production
           </p>
         </div>
@@ -243,7 +233,7 @@ export function LoginPage() {
       <div
         className="relative flex flex-1 flex-col items-center justify-center px-8 py-12"
         style={{
-          background: "oklch(0.04 0.002 240)",
+          background: "oklch(0.08 0.007 240)",
         }}
       >
         {/* 右侧背景光晕 */}
@@ -251,44 +241,52 @@ export function LoginPage() {
           aria-hidden
           className="pointer-events-none absolute inset-0"
           style={{
-            background: "radial-gradient(ellipse 60% 40% at 50% 100%, oklch(0.75 0.18 42 / 0.04) 0%, transparent 60%)",
+            background: "radial-gradient(ellipse 70% 50% at 50% 0%, oklch(0.55 0.15 200 / 0.06) 0%, transparent 60%)",
           }}
         />
 
         {/* 移动端 Logo（仅小屏显示） */}
         <div className="relative z-10 mb-8 flex items-center gap-2 lg:hidden">
           <div
-            className="grid h-8 w-8 place-items-center"
+            className="grid h-8 w-8 place-items-center rounded-lg"
             style={{
-              background: "var(--color-accent)",
-              boxShadow: "0 0 16px -4px oklch(0.75 0.18 42 / 0.50)",
+              background: "linear-gradient(135deg, var(--color-accent), var(--color-accent-2))",
+              boxShadow: "0 0 16px -4px var(--color-accent-glow)",
             }}
           >
-            <Film className="h-4 w-4" style={{ color: "oklch(0.04 0 0)" }} />
+            <Film className="h-4 w-4" style={{ color: "oklch(0.08 0 0)" }} />
           </div>
-          <span className="font-mono text-[13px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--color-text-2)" }}>{BRAND.name}</span>
+          <span className="font-editorial text-[20px] tracking-tight text-text">{BRAND.name}</span>
         </div>
 
         {/* 表单卡片 */}
         <div
-          className="relative z-10 w-full max-w-[420px] overflow-hidden"
+          className="relative z-10 w-full max-w-[400px] overflow-hidden rounded-2xl"
           style={{
-            background: "oklch(0.07 0.004 240)",
-            border: "1px solid oklch(1 0 0 / 0.10)",
-            borderTop: "3px solid var(--color-accent)",
-            boxShadow: "0 32px 80px -32px oklch(0 0 0 / 0.90), 0 0 40px -20px oklch(0.75 0.18 42 / 0.10)",
+            background: "oklch(0.11 0.010 240 / 0.90)",
+            border: "1px solid oklch(0.82 0.16 200 / 0.15)",
+            boxShadow: "0 32px 80px -32px oklch(0 0 0 / 0.8), 0 0 0 1px oklch(0.82 0.16 200 / 0.06)",
           }}
         >
+          {/* 顶部装饰线 */}
+          <div
+            aria-hidden
+            className="h-[2px] w-full"
+            style={{
+              background: "linear-gradient(90deg, transparent 0%, var(--color-accent) 40%, var(--color-accent-2) 60%, transparent 100%)",
+            }}
+          />
+
           <div className="p-8">
             {/* 标题区 */}
             <div className="mb-8">
-              <div className="font-mono text-[9px] font-bold uppercase tracking-[0.22em] mb-3" style={{ color: "var(--color-accent)" }}>
+              <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-4">
                 {isRegister ? "Create Account" : "Sign In"}
               </div>
-              <h1 className="font-black text-[32px] tracking-tight text-text" style={{ letterSpacing: "-0.03em", lineHeight: 1.1 }}>
+              <h1 className="font-editorial mt-2 text-[28px] tracking-tight text-text" style={{ letterSpacing: "-0.02em" }}>
                 {isRegister ? "创建账号" : "欢迎回来"}
               </h1>
-              <p className="mt-2 text-[12px]" style={{ color: "var(--color-text-4)" }}>
+              <p className="mt-1 text-[13px] text-text-3">
                 {isRegister
                   ? "注册后即可开始 AI 影视创作"
                   : "登录以继续您的创作项目"}
@@ -362,7 +360,7 @@ export function LoginPage() {
               )}
 
               {error && (
-                <p role="alert" aria-live="polite" className="px-3 py-2 text-[13px]" style={{ background: "oklch(0.55 0.18 30 / 0.12)", border: "1px solid oklch(0.55 0.18 30 / 0.25)", color: "var(--color-warm-bright)" }}>
+                <p role="alert" aria-live="polite" className="rounded-lg px-3 py-2 text-[13px]" style={{ background: "oklch(0.55 0.18 30 / 0.12)", border: "1px solid oklch(0.55 0.18 30 / 0.25)", color: "var(--color-warm-bright)" }}>
                   {error}
                 </p>
               )}
@@ -370,7 +368,7 @@ export function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className={`${ACCENT_BTN_CLS} mt-2 w-full justify-center py-3 text-[13px] font-bold uppercase tracking-[0.08em]`}
+                className={`${ACCENT_BTN_CLS} mt-2 w-full justify-center py-2.5 text-[14px]`}
                 style={ACCENT_BUTTON_STYLE}
               >
                 {loading && <Loader2 aria-hidden className="h-4 w-4 motion-safe:animate-spin" />}
@@ -380,14 +378,11 @@ export function LoginPage() {
               </button>
             </form>
 
-            <div className="mt-6 border-t pt-5" style={{ borderColor: "oklch(1 0 0 / 0.08)" }}>
+            <div className="mt-6 border-t pt-5" style={{ borderColor: "oklch(0.82 0.16 200 / 0.10)" }}>
               <button
                 type="button"
                 onClick={switchMode}
-                className="w-full text-center text-[12px] transition-colors"
-                style={{ color: "var(--color-text-4)" }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--color-text)")}
-                onMouseLeave={(e) => (e.currentTarget.style.color = "var(--color-text-4)")}
+                className="w-full text-center text-[13px] text-text-4 transition-colors hover:text-text"
               >
                 {isRegister ? t("auth:has_account") : t("auth:no_account")}
               </button>

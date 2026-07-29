@@ -138,16 +138,16 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
       style={{
         width: collapsed ? 68 : 280,
         transition: "width .20s ease",
-        borderRight: "1px solid oklch(1 0 0 / 0.08)",
-        background: "oklch(0.05 0.003 240 / 0.98)",
-        boxShadow: "inset -1px 0 0 oklch(1 0 0 / 0.04), 6px 0 32px -12px oklch(0 0 0 / 0.5)",
+        borderRight: "1px solid oklch(0.82 0.16 200 / 0.14)",
+        background: "oklch(0.10 0.008 240 / 0.95)",
+        boxShadow: "inset -1px 0 0 oklch(0.82 0.16 200 / 0.06), 6px 0 32px -12px oklch(0 0 0 / 0.5)",
       }}
     >
       {/* ---- 分组标题：WORKSPACE ---- */}
       {!collapsed && (
         <div
           className="px-4 pt-4 pb-2"
-          style={{ borderBottom: "1px solid oklch(1 0 0 / 0.06)" }}
+          style={{ borderBottom: "1px solid oklch(0.82 0.16 200 / 0.08)" }}
         >
           <span
             className="font-mono text-[9.5px] font-bold uppercase"
@@ -175,12 +175,12 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
                 padding: collapsed ? "10px 0" : "9px 10px",
                 justifyContent: collapsed ? "center" : undefined,
                 background: active
-                  ? "linear-gradient(90deg, oklch(0.75 0.18 42 / 0.15), oklch(0.75 0.18 42 / 0.06) 70%, transparent)"
+                  ? "linear-gradient(90deg, oklch(0.76 0.09 200 / 0.18), oklch(0.76 0.09 200 / 0.08) 70%, transparent)"
                   : "transparent",
                 color: active ? "var(--color-text)" : "var(--color-text-2)",
               }}
               onMouseEnter={(e) => {
-                if (!active) (e.currentTarget as HTMLElement).style.background = "oklch(1 0 0 / 0.04)";
+                if (!active) (e.currentTarget as HTMLElement).style.background = "oklch(0.82 0.16 200 / 0.06)";
               }}
               onMouseLeave={(e) => {
                 if (!active) (e.currentTarget as HTMLElement).style.background = "transparent";
@@ -201,11 +201,11 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
                   width: 30,
                   height: 30,
                   background: active
-                    ? "oklch(0.75 0.18 42 / 0.18)"
-                    : "oklch(0.09 0.004 240 / 0.60)",
+                    ? "oklch(0.76 0.09 200 / 0.20)"
+                    : "oklch(0.16 0.010 240 / 0.60)",
                   border: active
-                    ? "1px solid oklch(0.75 0.18 42 / 0.30)"
-                    : "1px solid oklch(1 0 0 / 0.06)",
+                    ? "1px solid oklch(0.76 0.09 200 / 0.35)"
+                    : "1px solid oklch(0.82 0.16 200 / 0.08)",
                   color: active ? "var(--color-accent-2)" : "var(--color-text-3)",
                 }}
               >
@@ -228,9 +228,9 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
                       style={{
                         color: active ? "var(--color-accent-2)" : "var(--color-text-4)",
                         background: active
-                          ? "oklch(0.75 0.18 42 / 0.12)"
-                          : "oklch(0.09 0.004 240 / 0.60)",
-                        border: "1px solid oklch(1 0 0 / 0.07)",
+                          ? "oklch(0.76 0.09 200 / 0.15)"
+                          : "oklch(0.16 0.010 240 / 0.60)",
+                        border: "1px solid oklch(0.82 0.16 200 / 0.10)",
                       }}
                     >
                       {item.meta}
@@ -246,7 +246,7 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
       {/* ---- 分隔线 ---- */}
       <div
         className="mx-3 my-1 h-px"
-        style={{ background: "oklch(1 0 0 / 0.07)" }}
+        style={{ background: "oklch(0.82 0.16 200 / 0.10)" }}
       />
 
       {/* ---- Episodes ---- */}
@@ -268,8 +268,8 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
                   className="num rounded-[3px] px-1 py-px text-[9.5px] font-semibold"
                   style={{
                     color: "var(--color-text-4)",
-                    background: "oklch(0.09 0.004 240 / 0.60)",
-                    border: "1px solid oklch(1 0 0 / 0.06)",
+                    background: "oklch(0.16 0.010 240 / 0.60)",
+                    border: "1px solid oklch(0.82 0.16 200 / 0.08)",
                   }}
                 >
                   {episodes.length}
@@ -282,7 +282,7 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
                   className="grid h-6 w-6 place-items-center rounded-md focus-ring disabled:cursor-not-allowed disabled:opacity-40"
                   style={{
                     background: "oklch(0.18 0.012 242 / 0.60)",
-                    border: "1px solid oklch(1 0 0 / 0.08)",
+                    border: "1px solid oklch(0.82 0.16 200 / 0.12)",
                     color: "var(--color-text-3)",
                   }}
                   title={t("dashboard:add_episode_unavailable")}
@@ -300,7 +300,7 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
                 className="flex items-center gap-2 rounded-lg px-3 py-2"
                 style={{
                   background: "oklch(0.13 0.010 240 / 0.70)",
-                  border: "1px solid oklch(1 0 0 / 0.07)",
+                  border: "1px solid oklch(0.82 0.16 200 / 0.10)",
                 }}
               >
                 <Search
@@ -363,11 +363,11 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
                 className="num mb-1 flex h-10 w-full items-center justify-center rounded-lg text-[11px] font-bold focus-ring transition-colors"
                 style={{
                   background: ep.episode === activeEp
-                    ? "oklch(0.75 0.18 42 / 0.18)"
+                    ? "oklch(0.76 0.09 200 / 0.20)"
                     : "oklch(0.14 0.010 240 / 0.50)",
                   border: ep.episode === activeEp
-                    ? "1px solid oklch(0.75 0.18 42 / 0.25)"
-                    : "1px solid oklch(1 0 0 / 0.06)",
+                    ? "1px solid oklch(0.76 0.09 200 / 0.30)"
+                    : "1px solid oklch(0.82 0.16 200 / 0.08)",
                   color: ep.episode === activeEp
                     ? "var(--color-accent-2)"
                     : "var(--color-text-3)",
@@ -384,8 +384,8 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
       <div
         className="flex items-center gap-2 px-2.5 py-2.5"
         style={{
-          borderTop: "1px solid oklch(1 0 0 / 0.07)",
-          background: "oklch(0.04 0.002 240 / 0.95)",
+          borderTop: "1px solid oklch(0.82 0.16 200 / 0.10)",
+          background: "oklch(0.09 0.006 240 / 0.80)",
         }}
       >
         <button
@@ -395,7 +395,7 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
           aria-expanded={!collapsed}
           style={{
             background: "oklch(0.18 0.012 242 / 0.60)",
-            border: "1px solid oklch(1 0 0 / 0.08)",
+            border: "1px solid oklch(0.82 0.16 200 / 0.12)",
             color: "var(--color-text-3)",
           }}
           title={collapsed ? t("dashboard:sidebar_expand") : t("dashboard:sidebar_collapse")}

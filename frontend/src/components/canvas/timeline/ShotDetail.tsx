@@ -190,7 +190,7 @@ function DurationPill({
   const baseStyle: React.CSSProperties = {
     background: isIncompatible
       ? "oklch(0.32 0.10 75 / 0.35)"
-      : "oklch(0.10 0.005 240 / 0.65)",
+      : "oklch(0.20 0.014 242 / 0.65)",
     border: isIncompatible
       ? "1px solid oklch(0.65 0.12 75 / 0.5)"
       : "1px solid var(--color-hairline-soft)",
@@ -242,7 +242,7 @@ function DurationPill({
         width="w-auto"
         align="start"
         sideOffset={6}
-        backgroundColor="oklch(0.10 0.005 240 / 0.98)"
+        backgroundColor="oklch(0.18 0.014 242 / 0.98)"
         className="rounded-lg p-2"
         style={{
           border: "1px solid var(--color-hairline)",
@@ -629,7 +629,7 @@ export function ShotDetail({
                     key={name}
                     className="rounded-md px-2 py-1 text-[11.5px]"
                     style={{
-                      background: "oklch(0.10 0.005 240 / 0.65)",
+                      background: "oklch(0.20 0.014 242 / 0.65)",
                       border: "1px solid var(--color-hairline-soft)",
                       color: "var(--color-text-2)",
                     }}
@@ -719,7 +719,7 @@ export function ShotDetail({
             className="rounded-md px-3 py-2.5"
             style={{
               background:
-                "linear-gradient(180deg, oklch(0.10 0.005 240 / 0.55), oklch(0.09 0.004 240 / 0.40))",
+                "linear-gradient(180deg, oklch(0.20 0.014 242 / 0.55), oklch(0.17 0.012 240 / 0.40))",
               border: "1px solid var(--color-hairline-soft)",
               borderLeft: "3px solid var(--color-accent-soft)",
             }}
@@ -888,7 +888,7 @@ export function ShotDetail({
       className="flex min-h-0 min-w-0 flex-col overflow-hidden"
       style={{
         background:
-          "radial-gradient(ellipse at top, oklch(0.10 0.005 240 / 0.35), oklch(0.16 0.012 238 / 0.20))",
+          "radial-gradient(ellipse at top, oklch(0.20 0.014 242 / 0.35), oklch(0.16 0.012 238 / 0.20))",
       }}
     >
       <div

@@ -96,7 +96,7 @@ export function ProductsPage({
 
 const FIELD_STYLE: React.CSSProperties = {
   background:
-    "linear-gradient(180deg, oklch(0.20 0.011 240 / 0.6), oklch(0.10 0.005 240 / 0.45))",
+    "linear-gradient(180deg, oklch(0.20 0.011 240 / 0.6), oklch(0.18 0.010 240 / 0.45))",
   border: "1px solid var(--color-hairline)",
   color: "var(--color-text)",
   boxShadow: "inset 0 1px 2px oklch(0 0 0 / 0.2)",

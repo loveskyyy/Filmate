@@ -165,7 +165,7 @@ export function StudioLayout({ children }: StudioLayoutProps) {
             width: assistantPanelOpen ? displayedPanelWidth : 0,
             background: "oklch(0.16 0.014 240 / 0.55)",
             borderLeft: assistantPanelOpen
-              ? "1px solid oklch(0.75 0.18 42 / 0.12)"
+              ? "1px solid oklch(0.82 0.16 200 / 0.12)"
               : "1px solid transparent",
           }}
         >

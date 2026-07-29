@@ -12,10 +12,10 @@ interface AdInitCanvasProps {
 }
 
 const CARD_BG =
-  "linear-gradient(180deg, oklch(0.10 0.005 240 / 0.60), oklch(0.17 0.012 238 / 0.45))";
+  "linear-gradient(180deg, oklch(0.20 0.014 242 / 0.60), oklch(0.17 0.012 238 / 0.45))";
 const FIELD_STYLE: React.CSSProperties = {
   background:
-    "linear-gradient(180deg, oklch(0.10 0.005 240 / 0.65), oklch(0.16 0.012 238 / 0.50))",
+    "linear-gradient(180deg, oklch(0.18 0.014 242 / 0.65), oklch(0.16 0.012 238 / 0.50))",
   border: "1px solid var(--color-hairline)",
   color: "var(--color-text)",
   boxShadow: "inset 0 1px 2px oklch(0 0 0 / 0.2)",

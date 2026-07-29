@@ -48,7 +48,7 @@ const STEP_BADGE_DONE_STYLE: CSSProperties = {
 };
 
 const STEP_BADGE_INACTIVE_STYLE: CSSProperties = {
-  background: "oklch(0.09 0.004 240 / 0.55)",
+  background: "oklch(0.16 0.010 240 / 0.55)",
 };
 
 const STEP_CONNECTOR_DONE_STYLE: CSSProperties = {
@@ -342,7 +342,7 @@ export function CreateProjectModal() {
         className="relative w-full max-w-3xl overflow-hidden rounded-[14px] border border-hairline bg-bg-grad-a/95 shadow-[0_40px_100px_-30px_oklch(0_0_0_/_0.85)] backdrop-blur-md max-h-[92vh] flex flex-col"
         style={{
           background:
-            "linear-gradient(180deg, oklch(0.20 0.012 242 / 0.95), oklch(0.09 0.004 240 / 0.95))",
+            "linear-gradient(180deg, oklch(0.20 0.012 242 / 0.95), oklch(0.16 0.010 240 / 0.95))",
         }}
       >
         {/* Hero header */}

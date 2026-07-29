@@ -83,7 +83,7 @@ export function NotesDrawer({ shotId, value, onCommit }: NotesDrawerProps) {
               right: 14,
               width: 340,
               background:
-                "linear-gradient(180deg, oklch(0.21 0.012 240 / 0.98), oklch(0.10 0.005 240 / 0.98))",
+                "linear-gradient(180deg, oklch(0.21 0.012 240 / 0.98), oklch(0.18 0.010 240 / 0.98))",
               border: "1px solid var(--color-hairline)",
               boxShadow:
                 "0 24px 60px -20px oklch(0 0 0 / 0.7), 0 0 0 1px var(--color-hairline-soft)",
@@ -136,7 +136,7 @@ export function NotesDrawer({ shotId, value, onCommit }: NotesDrawerProps) {
                 minHeight: 140,
                 lineHeight: 1.55,
                 color: "var(--color-text-2)",
-                background: "oklch(0.09 0.004 240 / 0.6)",
+                background: "oklch(0.16 0.010 240 / 0.6)",
                 border: "1px solid var(--color-hairline-soft)",
                 fontFamily: "var(--font-sans)",
               }}

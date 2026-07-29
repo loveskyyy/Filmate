@@ -183,7 +183,7 @@ export function SegmentRefsEditModal({
             className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
             style={{
               background:
-                "linear-gradient(135deg, var(--color-accent-dim), oklch(0.75 0.18 42 / 0.05))",
+                "linear-gradient(135deg, var(--color-accent-dim), oklch(0.76 0.09 200 / 0.05))",
               border: "1px solid var(--color-accent-soft)",
               color: "var(--color-accent-2)",
               boxShadow: "0 8px 18px -8px var(--color-accent-glow)",
@@ -213,7 +213,7 @@ export function SegmentRefsEditModal({
           <div
             className="flex w-44 items-center gap-2 rounded-md px-2.5 py-1.5 sm:w-52"
             style={{
-              background: "oklch(0.09 0.004 240 / 0.6)",
+              background: "oklch(0.16 0.010 240 / 0.6)",
               border: "1px solid var(--color-hairline)",
             }}
           >
