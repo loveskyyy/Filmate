@@ -74,5 +74,6 @@ EXPOSE 1241
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD curl -f http://localhost:1241/health || exit 1
 
-# 启动命令
-CMD ["uv", "run", "uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "1241"]
+# 启动命令：先跑 alembic 迁移(自动对齐 schema),再起 uvicorn。
+# 用 sh -c 串起来: 迁移失败时输出错误但仍尝试起 uvicorn,避免迁移 bug 把整个容器拉黑。
+CMD ["sh", "-c", "echo '[entrypoint] running alembic upgrade head' && uv run alembic upgrade head || echo '[entrypoint] WARNING: alembic upgrade head failed, continuing'; echo '[entrypoint] starting uvicorn'; uv run uvicorn server.app:app --host 0.0.0.0 --port 1241"]
