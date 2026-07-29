@@ -176,56 +176,38 @@ export function WelcomeCanvas({
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-8">
-      {/* Welcome heading — 更大标题 + 左对齐风格 */}
-      <header
-        className="relative overflow-hidden rounded-2xl px-8 py-8"
-        style={{
-          background: "oklch(0.11 0.010 240 / 0.80)",
-          border: "1px solid oklch(0.82 0.16 200 / 0.14)",
-          boxShadow: "0 8px 32px -16px oklch(0 0 0 / 0.6)",
-        }}
-      >
-        {/* 顶部装饰线 */}
-        <div
+    <div className="mx-auto w-full max-w-2xl space-y-6">
+      {/* Welcome heading — display-serif + accent flourish */}
+      <header className="text-center">
+        <span
           aria-hidden
-          className="absolute top-0 left-0 right-0 h-[2px]"
-          style={{ background: "linear-gradient(90deg, transparent, var(--color-accent), var(--color-accent-2), transparent)" }}
-        />
-        <div className="flex items-start gap-5">
-          <span
-            aria-hidden
-            className="mt-1 grid h-14 w-14 shrink-0 place-items-center rounded-2xl"
-            style={{
-              background: "linear-gradient(135deg, var(--color-accent-2), var(--color-accent))",
-              color: "oklch(0.08 0 0)",
-              boxShadow: "0 10px 32px -10px var(--color-accent-glow), inset 0 1px 0 oklch(1 0 0 / 0.4)",
-            }}
-          >
-            <Sparkles className="h-6 w-6" strokeWidth={2.2} />
-          </span>
-          <div>
-            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-4 mb-1">
-              Project Workspace
-            </div>
-            <h1
-              className="display-serif text-[32px] font-semibold leading-tight tracking-tight"
-              style={{ color: "var(--color-text)", letterSpacing: "-0.02em" }}
-            >
-              {t("welcome_to_project", { title: displayProjectTitle })}
-            </h1>
-            <p
-              className="mt-2 text-[13.5px] leading-relaxed"
-              style={{ color: "var(--color-text-3)" }}
-            >
-              {phase === "idle" && t("welcome_idle_desc")}
-              {phase === "has_sources" && t("welcome_has_sources_desc")}
-              {phase === "uploading" && t("uploading_file", { name: fileName })}
-              {phase === "analyzing" && t("analyzing_content_desc")}
-              {phase === "done" && t("analysis_complete_loading")}
-            </p>
-          </div>
-        </div>
+          className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl"
+          style={{
+            background:
+              "linear-gradient(135deg, var(--color-accent-2), var(--color-accent))",
+            color: "oklch(0.08 0 0)",
+            boxShadow:
+              "0 10px 32px -10px var(--color-accent-glow), inset 0 1px 0 oklch(1 0 0 / 0.4), 0 0 20px -8px var(--color-accent-glow)",
+          }}
+        >
+          <Sparkles className="h-5 w-5" strokeWidth={2.2} />
+        </span>
+        <h1
+          className="display-serif text-[28px] font-semibold leading-tight tracking-tight"
+          style={{ color: "var(--color-text)" }}
+        >
+          {t("welcome_to_project", { title: displayProjectTitle })}
+        </h1>
+        <p
+          className="mt-2 text-[13px] leading-relaxed"
+          style={{ color: "var(--color-text-3)" }}
+        >
+          {phase === "idle" && t("welcome_idle_desc")}
+          {phase === "has_sources" && t("welcome_has_sources_desc")}
+          {phase === "uploading" && t("uploading_file", { name: fileName })}
+          {phase === "analyzing" && t("analyzing_content_desc")}
+          {phase === "done" && t("analysis_complete_loading")}
+        </p>
       </header>
 
       {/* IDLE: drag-drop zone */}

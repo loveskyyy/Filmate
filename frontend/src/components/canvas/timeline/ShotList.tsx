@@ -164,26 +164,20 @@ export function ShotList({
   return (
     <div
       style={{
-        borderRight: "1px solid oklch(0.82 0.16 200 / 0.14)",
-        background: "oklch(0.09 0.007 240 / 0.95)",
+        borderRight: "1px solid var(--color-hairline)",
+        background:
+          "linear-gradient(180deg, oklch(0.17 0.014 242 / 0.55), oklch(0.15 0.012 240 / 0.40))",
       }}
       className="flex h-full min-w-0 flex-col"
     >
-      <div className="flex shrink-0 items-center gap-2 px-3 pb-2 pt-3.5">
+      <div className="flex shrink-0 items-center gap-2 px-3 pb-2 pt-3">
         <span
-          className="font-mono text-[9.5px] font-bold uppercase"
-          style={{ color: "oklch(0.45 0.010 240)", letterSpacing: "0.18em" }}
+          className="text-[10.5px] font-bold uppercase"
+          style={{ color: "var(--color-text-4)", letterSpacing: "0.8px" }}
         >
           {t("shots_section_title")}
         </span>
-        <span
-          className="num rounded-[3px] px-1.5 py-px text-[9.5px] font-semibold"
-          style={{
-            color: "var(--color-accent-2)",
-            background: "oklch(0.76 0.09 200 / 0.12)",
-            border: "1px solid oklch(0.76 0.09 200 / 0.15)",
-          }}
-        >
+        <span className="num text-[10px]" style={{ color: "var(--color-text-4)" }}>
           {filtered.length}
         </span>
         <span className="flex-1" />
@@ -211,10 +205,10 @@ export function ShotList({
 
       <div className="shrink-0 px-3 pb-2.5">
         <div
-          className="flex items-center gap-1.5 rounded-lg px-2.5 py-2"
+          className="flex items-center gap-1.5 rounded-md px-2 py-1.5"
           style={{
-            background: "oklch(0.13 0.010 240 / 0.70)",
-            border: "1px solid oklch(0.82 0.16 200 / 0.10)",
+            background: "oklch(0.18 0.014 242 / 0.60)",
+            border: "1px solid var(--color-hairline-soft)",
           }}
         >
           <Search
@@ -285,8 +279,8 @@ export function ShotList({
                   />
                 )}
                 <div
-                  className="relative shrink-0 overflow-hidden rounded-[6px]"
-                  style={{ width: 56, height: 72 }}
+                  className="relative shrink-0 overflow-hidden rounded-[5px]"
+                  style={{ width: 48, height: 64 }}
                 >
                   {sbUrl ? (
                     <img
