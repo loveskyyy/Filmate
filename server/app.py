@@ -64,6 +64,7 @@ from server.routers import (
     system,
     system_config,
     tasks,
+    transactions,
     usage,
     user_agent_config,
     users,
@@ -568,6 +569,7 @@ app.include_router(grids.router, prefix="/api/v1", tags=["宫格图"])
 app.include_router(reference_videos.router, prefix="/api/v1", tags=["参考生视频"])
 app.include_router(assets.router, prefix="/api/v1", tags=["全局资产库"])
 app.include_router(users.router, prefix="/api/v1", tags=["用户管理"])
+app.include_router(transactions.router, prefix="/api/v1", tags=["积分与充值"])
 
 
 def create_generation_worker() -> GenerationWorker:
