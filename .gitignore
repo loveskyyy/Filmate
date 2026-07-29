@@ -33,10 +33,6 @@ projects/*
 vertex_keys/*
 !vertex_keys/.gitkeep
 
-# 微信支付证书/私钥（敏感,绝不能 commit）
-cert/*
-!cert/.gitkeep
-
 # Runtime log directory (PROJECT_ROOT/logs from lib/logging_config.py)
 logs/
 

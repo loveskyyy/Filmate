@@ -1428,5 +1428,4 @@ export default {
   'diagnosis_rate_limited': 'Rate limited. Try again later.',
   'diagnosis_network': 'Network unreachable. Check URL and firewall.',
   'diagnosis_unknown': 'Unknown error. See raw response.',
-  'recharge_title': 'Credits',
 };
