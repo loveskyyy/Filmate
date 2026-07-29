@@ -1430,4 +1430,9 @@ export default {
   'diagnosis_network': '网络无法访问，检查 URL 与防火墙',
   'diagnosis_unknown': '未知错误，请查看原始错误信息',
   'recharge_title': '积分充值',
+  'balance_label': '余额',
+  'credits_unit': '积分',
+  'recharge_balance_link': '充值/余额',
+  'user': '用户',
+  'logout': '退出登录',
 } satisfies Record<keyof typeof enDashboard, string>;

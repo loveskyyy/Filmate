@@ -1429,4 +1429,9 @@ export default {
   'diagnosis_network': 'Network unreachable. Check URL and firewall.',
   'diagnosis_unknown': 'Unknown error. See raw response.',
   'recharge_title': 'Credits',
+  'balance_label': 'Balance',
+  'credits_unit': 'credits',
+  'recharge_balance_link': 'Recharge / Balance',
+  'user': 'User',
+  'logout': 'Log out',
 };

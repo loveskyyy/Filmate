@@ -1425,4 +1425,9 @@ export default {
   'diagnosis_network': 'Không thể truy cập mạng. Kiểm tra URL và tường lửa.',
   'diagnosis_unknown': 'Lỗi không xác định. Xem chi tiết bên dưới.',
   'recharge_title': 'Nạp điểm',
+  'balance_label': 'Số dư',
+  'credits_unit': 'điểm',
+  'recharge_balance_link': 'Nạp / Số dư',
+  'user': 'Người dùng',
+  'logout': 'Đăng xuất',
 } satisfies Record<keyof typeof enDashboard, string>;

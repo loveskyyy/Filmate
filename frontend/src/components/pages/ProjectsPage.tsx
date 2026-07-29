@@ -12,14 +12,17 @@ import { formatDate } from "@/utils/date-format";
 import { Link, useLocation } from "wouter";
 import {
   AlertTriangle,
+  DollarSign,
   Library,
   Loader2,
+  LogOut,
   MoreHorizontal,
   Plus,
   Search,
   Settings,
   Trash2,
   Upload,
+  User,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -27,6 +30,7 @@ import { API } from "@/api";
 import { useProjectsStore } from "@/stores/projects-store";
 import { useAppStore } from "@/stores/app-store";
 import { useConfigStatusStore } from "@/stores/config-status-store";
+import { useAuthStore } from "@/stores/auth-store";
 import { ArchiveDiagnosticsDialog } from "@/components/shared/ArchiveDiagnosticsDialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { GlassModal } from "@/components/ui/GlassModal";
@@ -776,6 +780,7 @@ interface TopBarProps {
   onSettings: () => void;
   onAssets: () => void;
   onOpenClaw: () => void;
+  onFinance: () => void;
   importing: boolean;
   configIncomplete: boolean;
   searchInputRef: React.RefObject<HTMLInputElement | null>;
@@ -789,11 +794,44 @@ function TopBar({
   onSettings,
   onAssets,
   onOpenClaw,
+  onFinance,
   importing,
   configIncomplete,
   searchInputRef,
 }: TopBarProps) {
   const { t } = useTranslation(["common", "dashboard", "assets"]);
+  const { username, logout } = useAuthStore();
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [userBalance, setUserBalance] = useState<number | null>(null);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    API.getCredits()
+      .then((res) => {
+        setUserBalance(res.credits);
+      })
+      .catch(() => {
+        setUserBalance(null);
+      });
+  }, []);
+
+  // 点外面关闭用户菜单
+  useEffect(() => {
+    if (!userDropdownOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(e.target as Node)) {
+        setUserDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [userDropdownOpen]);
+
+  const handleLogout = () => {
+    logout();
+    window.location.href = "/login";
+  };
+
   return (
     <div
       className="sticky top-0 z-30"
@@ -890,6 +928,69 @@ function TopBar({
           >
             <span aria-hidden>🦞</span>
           </button>
+          <div className="relative" ref={userDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+              className="flex h-8 w-8 items-center justify-center rounded-full border transition-colors"
+              style={{
+                backgroundColor: userDropdownOpen ? "#3a3a4a" : "#2a2a3a",
+                borderColor: "rgba(255,255,255,0.1)",
+                color: "#b0b0c0",
+              }}
+              title={username || t("dashboard:user")}
+              aria-label={username || t("dashboard:user")}
+            >
+              <User className="h-4 w-4" />
+            </button>
+            {userDropdownOpen && (
+              <div
+                className="absolute right-0 top-full z-50 mt-1 min-w-[180px] rounded-lg border py-1 shadow-xl"
+                style={{
+                  backgroundColor: "#1a1a2a",
+                  borderColor: "rgba(255,255,255,0.1)",
+                }}
+              >
+                {username && (
+                  <div className="px-3 py-2">
+                    <div
+                      className="text-xs font-medium"
+                      style={{ color: "#e0e0f0" }}
+                    >
+                      {username}
+                    </div>
+                    <div className="mt-1 text-xs" style={{ color: "#9090a0" }}>
+                      {t("dashboard:balance_label", { defaultValue: "余额" })}: ¥
+                      {((userBalance ?? 0) / 100).toFixed(2)}
+                    </div>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserDropdownOpen(false);
+                    onFinance();
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors hover:bg-white/10"
+                  style={{ color: "#b0b0c0" }}
+                >
+                  <DollarSign className="h-3.5 w-3.5" />
+                  <span>
+                    {t("dashboard:recharge_balance_link", { defaultValue: "充值/余额" })}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors hover:bg-white/10"
+                  style={{ color: "#ff6060" }}
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span>{t("dashboard:logout", { defaultValue: "退出登录" })}</span>
+                </button>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={onSettings}
@@ -1390,6 +1491,7 @@ export function ProjectsPage() {
           navigate("/app/assets");
         }}
         onOpenClaw={() => setShowOpenClaw(true)}
+        onFinance={() => navigate("/app/finance")}
         importing={importingProject}
         configIncomplete={!isConfigComplete}
         searchInputRef={searchInputRef}
