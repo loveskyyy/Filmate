@@ -10,6 +10,7 @@ import { ProjectsPage } from "@/components/pages/ProjectsPage";
 import { SystemConfigPage } from "@/components/pages/SystemConfigPage";
 import { ProjectSettingsPage } from "@/components/pages/ProjectSettingsPage";
 import { AssetLibraryPage } from "@/components/pages/AssetLibraryPage";
+import { FinancePage } from "@/components/pages/finance/FinancePage";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ToastOverlay } from "@/components/layout/ToastOverlay";
@@ -179,6 +180,13 @@ export function AppRoutes() {
         <Route path="/app/assets">
           <AuthGuard>
             <AssetLibraryPage />
+          </AuthGuard>
+        </Route>
+
+        {/* Finance (积分与充值) */}
+        <Route path="/app/finance">
+          <AuthGuard>
+            <FinancePage />
           </AuthGuard>
         </Route>
 

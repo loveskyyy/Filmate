@@ -190,6 +190,19 @@ export interface SuccessResponse {
   message?: string;
 }
 
+/** 积分交易记录(由 /users/me/transactions 返回)。 */
+export interface FinanceTransaction {
+  id: number;
+  type: string;
+  amount: number;
+  credits_before: number;
+  credits_after: number;
+  description: string | null;
+  trade_no: string | null;
+  status: string;
+  created_at: string;
+}
+
 /** 说书模式片段 PATCH 入参（drama 模式片段走 {@link API.updateScene}）。 */
 export interface SegmentUpdatePayload {
   script_file: string;
@@ -2281,6 +2294,36 @@ class API {
       `/projects/${encodeURIComponent(projectName)}/reference-videos/episodes/${episode}/derive-units`,
       { method: "POST" },
     );
+  }
+
+  // ==================== 积分与充值 API ====================
+
+  /** 当前用户的积分余额。后端对应 `users.credits` 字段 (int)。 */
+  static async getCredits(): Promise<{ credits: number }> {
+    return this.request("/users/me/credits");
+  }
+
+  /** 分页拉取当前用户的积分交易记录。 */
+  static async getTransactions(
+    page: number = 1,
+    pageSize: number = 20,
+  ): Promise<{
+    transactions: FinanceTransaction[];
+    total: number;
+    page: number;
+    page_size: number;
+  }> {
+    return this.request(
+      `/users/me/transactions?page=${page}&page_size=${pageSize}`,
+    );
+  }
+
+  /** 创建微信 Native 充值订单,返回二维码 url。amount 单位是"元"(如 100 = ¥100)。 */
+  static async createRecharge(amount: number): Promise<{ code_url: string; out_trade_no: string }> {
+    return this.request("/users/me/recharge", {
+      method: "POST",
+      body: JSON.stringify({ amount }),
+    });
   }
 }
 

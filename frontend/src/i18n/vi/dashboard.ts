@@ -1424,4 +1424,5 @@ export default {
   'diagnosis_rate_limited': 'Đã vượt giới hạn tốc độ. Thử lại sau.',
   'diagnosis_network': 'Không thể truy cập mạng. Kiểm tra URL và tường lửa.',
   'diagnosis_unknown': 'Lỗi không xác định. Xem chi tiết bên dưới.',
+  'recharge_title': 'Nạp điểm',
 } satisfies Record<keyof typeof enDashboard, string>;

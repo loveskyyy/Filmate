@@ -10,6 +10,7 @@ from lib.db.models.custom_provider import CustomProvider, CustomProviderModel
 from lib.db.models.session import AgentSession
 from lib.db.models.session_event import AgentSessionEventLogEntry
 from lib.db.models.task import Task, TaskEvent, WorkerLease
+from lib.db.models.transaction import Transaction
 from lib.db.models.user import User
 from lib.db.models.user_agent_config import UserAgentConfig, UserAgentPreset
 
@@ -29,6 +30,7 @@ __all__ = [
     "CustomProviderModel",
     "Asset",
     "AgentAnthropicCredential",
+    "Transaction",
     "UserAgentConfig",
     "UserAgentPreset",
 ]
