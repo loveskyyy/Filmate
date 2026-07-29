@@ -113,7 +113,7 @@ function GuideSection({ meta }: { meta: EpisodeMeta | undefined }) {
   return (
     <section
       className="mt-4 overflow-hidden rounded-xl"
-      style={{ background: "oklch(0.21 0.012 240 / 0.35)", border: "1px solid var(--color-hairline)" }}
+      style={{ background: "oklch(0.21 0.012 265 / 0.35)", border: "1px solid var(--color-hairline)" }}
     >
       <button
         type="button"
@@ -149,7 +149,7 @@ function GuideSection({ meta }: { meta: EpisodeMeta | undefined }) {
                 <div
                   key={i}
                   className="rounded-lg px-3.5 py-3"
-                  style={{ background: "oklch(0.24 0.012 240 / 0.55)", border: "1px solid var(--color-hairline-soft)" }}
+                  style={{ background: "oklch(0.24 0.012 265 / 0.55)", border: "1px solid var(--color-hairline-soft)" }}
                 >
                   <span className="num text-[15px] font-bold" style={{ color: "var(--color-accent-2)" }}>
                     {i + 1}
@@ -235,7 +235,7 @@ export function EpisodeSourceReview({
           <div
             className="min-h-0 flex-1 overflow-y-auto rounded-2xl px-12 py-9"
             style={{
-              background: "linear-gradient(180deg, oklch(0.215 0.011 240 / 0.75), oklch(0.195 0.010 240 / 0.75))",
+              background: "linear-gradient(180deg, oklch(0.215 0.011 265 / 0.75), oklch(0.195 0.010 265 / 0.75))",
               border: "1px solid var(--color-hairline)",
               boxShadow: "inset 0 1px 0 oklch(1 0 0 / 0.04)",
             }}

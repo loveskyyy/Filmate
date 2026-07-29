@@ -7,7 +7,7 @@ interface PhaseStepperProps {
 
 /**
  * 顶栏阶段步进器：胶囊样式（圆形号 + 标签 + 短分隔线）。
- * 当前阶段高亮青蓝霓虹 accent，已完成阶段显示弱化的连接线。
+ * 当前阶段高亮 accent 紫色，已完成阶段显示弱化的连接线。
  */
 export function PhaseStepper({ currentPhase }: PhaseStepperProps) {
   const { t } = useTranslation("dashboard");
@@ -18,9 +18,9 @@ export function PhaseStepper({ currentPhase }: PhaseStepperProps) {
       <div
         className="inline-flex items-center gap-px rounded-full p-[3px]"
         style={{
-          background: "oklch(0.15 0.012 240 / 0.65)",
-          border: "1px solid oklch(0.82 0.16 200 / 0.15)",
-          boxShadow: "inset 0 1px 2px oklch(0 0 0 / 0.35), 0 0 0 1px oklch(0.82 0.16 200 / 0.05)",
+          background: "oklch(0.17 0.010 265 / 0.6)",
+          border: "1px solid var(--color-hairline)",
+          boxShadow: "inset 0 1px 2px oklch(0 0 0 / 0.25)",
         }}
       >
         {PHASE_ORDER.map((phase, idx) => {
@@ -36,9 +36,9 @@ export function PhaseStepper({ currentPhase }: PhaseStepperProps) {
                   isActive
                     ? {
                         color: "var(--color-text)",
-                        background: "linear-gradient(180deg, oklch(0.24 0.016 242), oklch(0.20 0.014 240))",
+                        background: "linear-gradient(180deg, oklch(0.30 0.012 265), oklch(0.26 0.012 265))",
                         boxShadow:
-                          "0 0 0 1px oklch(0.82 0.16 200 / 0.25), 0 2px 6px oklch(0 0 0 / 0.4)",
+                          "0 0 0 1px var(--color-hairline-strong), 0 1px 2px oklch(0 0 0 / 0.3)",
                       }
                     : { color: "var(--color-text-3)", background: "transparent" }
                 }
@@ -49,11 +49,11 @@ export function PhaseStepper({ currentPhase }: PhaseStepperProps) {
                     isActive
                       ? {
                           background: "var(--color-accent)",
-                          color: "oklch(0.08 0 0)",
-                          boxShadow: "0 0 10px -1px var(--color-accent-glow)",
+                          color: "oklch(0.12 0 0)",
+                          boxShadow: "0 0 8px -1px var(--color-accent-glow)",
                         }
                       : {
-                          background: "oklch(0.26 0.014 242)",
+                          background: "oklch(0.32 0.012 265)",
                           color: "var(--color-text-3)",
                         }
                   }

@@ -42,16 +42,16 @@ export function ChatMessage({ message, streaming }: ChatMessageProps) {
         marginLeft: "auto",
         maxWidth: "85%",
         background:
-          "linear-gradient(180deg, var(--color-accent-dim), oklch(0.76 0.09 200 / 0.06))",
+          "linear-gradient(180deg, var(--color-accent-dim), oklch(0.76 0.09 295 / 0.06))",
         border: "1px solid var(--color-accent-soft)",
       }
     : isSystem
       ? {
-          background: "oklch(0.22 0.011 240 / 0.5)",
+          background: "oklch(0.22 0.011 265 / 0.5)",
           border: "1px solid var(--color-hairline-soft)",
         }
       : {
-          background: "oklch(0.21 0.012 240 / 0.5)",
+          background: "oklch(0.21 0.012 265 / 0.5)",
           border: "1px solid var(--color-hairline-soft)",
         };
 

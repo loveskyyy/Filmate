@@ -163,9 +163,9 @@ export function StudioLayout({ children }: StudioLayoutProps) {
           }`}
           style={{
             width: assistantPanelOpen ? displayedPanelWidth : 0,
-            background: "oklch(0.16 0.014 240 / 0.55)",
+            background: "oklch(0.19 0.011 250 / 0.5)",
             borderLeft: assistantPanelOpen
-              ? "1px solid oklch(0.82 0.16 200 / 0.12)"
+              ? "1px solid var(--color-hairline)"
               : "1px solid transparent",
           }}
         >
@@ -206,10 +206,10 @@ export function StudioLayout({ children }: StudioLayoutProps) {
         }`}
         style={{
           background:
-            "linear-gradient(135deg, var(--color-accent-2), var(--color-accent))",
-          color: "oklch(0.08 0 0)",
+            "linear-gradient(135deg, var(--color-accent), oklch(0.60 0.10 280))",
+          color: "oklch(0.12 0 0)",
           boxShadow:
-            "0 0 0 1px oklch(1 0 0 / 0.15), 0 8px 24px -6px var(--color-accent-glow), 0 0 20px -8px var(--color-accent-glow)",
+            "0 0 0 1px oklch(1 0 0 / 0.1), 0 6px 20px -6px var(--color-accent-glow)",
           transitionDelay: assistantPanelOpen ? "0ms" : "200ms",
         }}
         title={t("open_assistant_panel")}

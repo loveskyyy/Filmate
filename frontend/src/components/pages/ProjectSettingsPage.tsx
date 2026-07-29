@@ -58,7 +58,7 @@ function SectionCard({ kicker, title, description, children, footer }: SectionCa
       className="overflow-hidden rounded-[12px] border border-hairline"
       style={{
         background:
-          "linear-gradient(180deg, oklch(0.20 0.014 242 / 0.60), oklch(0.16 0.012 238 / 0.55))",
+          "linear-gradient(180deg, oklch(0.20 0.012 270 / 0.55), oklch(0.16 0.010 265 / 0.55))",
         boxShadow:
           "inset 0 1px 0 oklch(1 0 0 / 0.03), 0 18px 40px -28px oklch(0 0 0 / 0.5)",
       }}
@@ -76,7 +76,7 @@ function SectionCard({ kicker, title, description, children, footer }: SectionCa
       </header>
       <div className="px-5 py-4">{children}</div>
       {footer ? (
-        <footer className="border-t border-hairline-soft bg-[oklch(0.15_0.012_240_/_0.55)] px-5 py-3">
+        <footer className="border-t border-hairline-soft bg-[oklch(0.16_0.010_265_/_0.5)] px-5 py-3">
           {footer}
         </footer>
       ) : null}
@@ -439,7 +439,7 @@ export function ProjectSettingsPage() {
       style={
         {
           background:
-            "radial-gradient(900px 480px at 8% -10%, oklch(0.30 0.10 200 / 0.16), transparent 55%), radial-gradient(800px 460px at 100% 110%, oklch(0.24 0.08 220 / 0.16), transparent 55%), linear-gradient(180deg, var(--color-bg-grad-a), var(--color-bg-grad-b))",
+            "radial-gradient(900px 480px at 8% -10%, oklch(0.32 0.05 295 / 0.22), transparent 55%), radial-gradient(800px 460px at 100% 110%, oklch(0.26 0.04 260 / 0.22), transparent 55%), linear-gradient(180deg, var(--color-bg-grad-a), var(--color-bg-grad-b))",
         }
       }
     >
@@ -448,7 +448,7 @@ export function ProjectSettingsPage() {
         className="sticky top-0 z-30 shrink-0"
         style={{
           background:
-            "linear-gradient(180deg, oklch(0.18 0.014 242 / 0.60), oklch(0.14 0.012 238 / 0.50))",
+            "linear-gradient(180deg, oklch(0.20 0.011 265 / 0.55), oklch(0.15 0.010 265 / 0.45))",
           backdropFilter: "blur(28px) saturate(1.5)",
           WebkitBackdropFilter: "blur(28px) saturate(1.5)",
           borderBottom: "1px solid var(--color-hairline)",
@@ -735,7 +735,7 @@ export function ProjectSettingsPage() {
         className="shrink-0"
         style={{
           background:
-            "linear-gradient(180deg, oklch(0.16 0.014 242 / 0.70), oklch(0.13 0.012 238 / 0.88))",
+            "linear-gradient(180deg, oklch(0.18 0.011 265 / 0.65), oklch(0.14 0.009 265 / 0.85))",
           backdropFilter: "blur(20px) saturate(1.3)",
           WebkitBackdropFilter: "blur(20px) saturate(1.3)",
           borderTop: "1px solid var(--color-hairline)",
