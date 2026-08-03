@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from lib.agnes_shared import AGNES_BASE_URL
@@ -107,6 +108,14 @@ class ProviderMeta:
     @property
     def capabilities(self) -> list[str]:
         return sorted(set(c for m in self.models.values() for c in m.capabilities))
+
+    def fully_covered_credential_groups(self, values: Mapping[str, str | None]) -> list[list[str]]:
+        """返回本次提交「完整覆盖」的凭证组（组内所有 key 在 values 中均非空）。
+
+        驱动凭证创建/更新端点的切组判定：未声明 credential_groups 的 provider
+        （绝大多数）该列表恒为空，调用方据此保持"不做切组处理"的原语义不变。
+        """
+        return [group for group in self.credential_groups if all(values.get(k) for k in group)]
 
 
 # Gemini 文本费率（美元/百万 token），Standard paid tier、prompt ≤200K 区间。
@@ -1282,46 +1291,6 @@ PROVIDER_REGISTRY: dict[str, ProviderMeta] = {
         # 用户可经 video_max_workers 覆盖。其余 lane 未声明，走全局默认。
         default_concurrency={"video": 1},
     ),
-    "runningHub": ProviderMeta(
-        display_name="RunningHub",
-        description="RunningHub 视频生成平台，基于 Seedance 2.0 模型，支持文生图、图生图、文生视频与多模态生视频。",
-        required_keys=["api_key"],
-        optional_keys=["image_max_workers", "video_max_workers"],
-        secret_keys=["api_key"],
-        models={
-            # --- image ---
-            "rhart-image-g-2-official": ModelInfo(
-                display_name="RHart Image G2 Official",
-                media_type="image",
-                capabilities=["text_to_image", "image_to_image"],
-                default=True,
-                resolutions=["1K", "2K", "4K"],
-            ),
-            # --- video ---
-            "sparkvideo-2.0-fast": ModelInfo(
-                display_name="SparkVideo 2.0 Fast",
-                media_type="video",
-                capabilities=["text_to_video", "generate_audio", "seed_control"],
-                default=True,
-                supported_durations=list(range(1, 11)),
-                resolutions=["480p", "720p", "1080p"],
-            ),
-            "sparkvideo-2.0": ModelInfo(
-                display_name="SparkVideo 2.0",
-                media_type="video",
-                capabilities=["text_to_video", "image_to_video", "generate_audio", "seed_control"],
-                supported_durations=list(range(1, 11)),
-                resolutions=["480p", "720p", "1080p"],
-            ),
-            "sparkvideo-2.0-multimodal": ModelInfo(
-                display_name="SparkVideo 2.0 Multimodal",
-                media_type="video",
-                capabilities=["image_to_video", "generate_audio", "seed_control"],
-                supported_durations=list(range(1, 11)),
-                resolutions=["480p", "720p", "1080p"],
-            ),
-        },
-    ),
     "filmate": ProviderMeta(
         display_name="Filmate",
         description="Filmate 视频生成平台，基于 Seedance 2.0 和 GPT Image 模型，支持文生图、图生图、文生视频与多模态生视频。",
@@ -1338,8 +1307,8 @@ PROVIDER_REGISTRY: dict[str, ProviderMeta] = {
                 default=True,
             ),
             # --- image ---
-            "GPT image2": ModelInfo(
-                display_name="GPT Image 2",
+            "GPT image2 1K": ModelInfo(
+                display_name="GPT image2 1K",
                 media_type="image",
                 capabilities=["text_to_image", "image_to_image"],
                 default=True,
