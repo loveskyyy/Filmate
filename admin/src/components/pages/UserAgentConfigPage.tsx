@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Plus, Loader2, Bot, Film, Plug, AlertTriangle } from "lucide-react";
 import { ProviderForm } from "./ProviderForm";
-import { AddCredentialModal, type CredentialForm } from "../agent/AddCredentialModal";
+import { AddCredentialModal, type CredentialFormData } from "../agent/AddCredentialModal";
+import type { AgentCredential, PresetProvider } from "../agent/types";
 
 type Section = "providers" | "agent" | "media";
 
@@ -57,14 +58,7 @@ interface SystemOptions {
 }
 
 // Full system config response
-interface SystemConfigResponse {
-  settings: MediaSettings;
-  options: SystemOptions;
-}
-
-const VIDEO_OPTIONS = ["vidu", "kling", "minimax", "runway"];
-const IMAGE_OPTIONS = ["dashscope", "openai"];
-const TEXT_OPTIONS = ["openai", "anthropic"];
+// (SystemConfigResponse 在当前实现里未直接引用——settings/options 各自使用本地类型。)
 
 export default function UserAgentConfigPage() {
   const { userId } = useParams<{ userId: string }>();
@@ -193,7 +187,7 @@ export default function UserAgentConfigPage() {
   };
 
   // Credential handlers
-  const handleSaveCredential = async (form: CredentialForm) => {
+  const handleSaveCredential = async (form: CredentialFormData) => {
     try {
       if (editingCredential) {
         // Update existing credential

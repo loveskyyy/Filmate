@@ -4,6 +4,18 @@ import { useTranslation } from "react-i18next";
 import { Plus, Pencil, Trash2, Coins, Settings } from "lucide-react";
 import { User, usersApi } from "../../api";
 
+type UserRole = "admin" | "user";
+
+interface UserForm {
+  username: string;
+  password: string;
+  email: string;
+  role: UserRole;
+  credits: number;
+}
+
+const EMPTY_FORM: UserForm = { username: "", password: "", email: "", role: "user", credits: 0 };
+
 export default function UsersPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -11,7 +23,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [form, setForm] = useState({ username: "", password: "", email: "", role: "user", credits: 0 });
+  const [form, setForm] = useState<UserForm>(EMPTY_FORM);
   
   // 积分调整
   const [showCreditsModal, setShowCreditsModal] = useState(false);
@@ -43,7 +55,7 @@ export default function UsersPage() {
       }
       setShowModal(false);
       setEditingUser(null);
-      setForm({ username: "", password: "", email: "", role: "user", credits: 0 });
+      setForm(EMPTY_FORM);
       loadUsers();
     } catch (e: any) {
       alert(e.message);
@@ -68,7 +80,7 @@ export default function UsersPage() {
 
   const openAdd = () => {
     setEditingUser(null);
-    setForm({ username: "", password: "", email: "", role: "user", credits: 0 });
+    setForm(EMPTY_FORM);
     setShowModal(true);
   };
   
@@ -202,7 +214,7 @@ export default function UsersPage() {
                 <label className="block text-sm font-medium mb-1">{t("role")}</label>
                 <select
                   value={form.role}
-                  onChange={(e) => setForm({ ...form, role: e.target.value })}
+                  onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}
                   className="w-full border rounded px-3 py-2"
                 >
                   <option value="user">{t("user")}</option>

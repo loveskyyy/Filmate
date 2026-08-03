@@ -131,21 +131,6 @@ function getMediaType(endpoint: string): string {
   return "text";
 }
 
-function getEndpointLabel(value: string): string {
-  const option = ENDPOINT_OPTIONS.find(o => o.value === value);
-  return option?.label || value;
-}
-
-function getEndpointPath(value: string): string {
-  const option = ENDPOINT_OPTIONS.find(o => o.value === value);
-  return option?.path || "";
-}
-
-function getEndpointCapability(value: string): string {
-  const option = ENDPOINT_OPTIONS.find(o => o.value === value);
-  return option?.capability || "";
-}
-
 // 价格标签：不同媒体类型显示不同的单位
 function getPriceLabels(media: string): { input: string; output: string } {
   if (media === "video") return { input: "$/秒", output: "" };
@@ -156,7 +141,7 @@ function getPriceLabels(media: string): { input: string; output: string } {
 }
 
 // 自定义 Endpoint 下拉组件
-function EndpointSelect({ value, onChange, modelKey }: { value: string; onChange: (v: string) => void; modelKey: string }) {
+function EndpointSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -286,7 +271,7 @@ export function ProviderForm({ existing, onSaved, onCancel, forUserId, fetchApi 
       const discovered = (data.models || []).map(discoveredToRow);
       setModels((prev) => {
         const existingKeys = new Set(prev.map((m) => m.model_id));
-        const newModels = discovered.filter((d) => !existingKeys.has(d.model_id));
+        const newModels = discovered.filter((d: ModelRow) => !existingKeys.has(d.model_id));
         return [...prev, ...newModels];
       });
       setModelFilter("");
@@ -564,7 +549,6 @@ export function ProviderForm({ existing, onSaved, onCancel, forUserId, fetchApi 
                 const priceLabels = getPriceLabels(media);
                 const showResolution = media === "image" || media === "video";
                 const showDurations = media === "video";
-                const endpointPath = getEndpointPath(m.endpoint);
                 return (
                   <div key={m.key} className="rounded-lg border p-3">
                     <div className="flex flex-wrap items-center gap-2">
@@ -591,7 +575,6 @@ export function ProviderForm({ existing, onSaved, onCancel, forUserId, fetchApi 
                       <EndpointSelect
                         value={m.endpoint}
                         onChange={(v) => updateModel(m.key, { endpoint: v, is_default: false })}
-                        modelKey={m.key}
                       />
 
                       {/* Default toggle */}
