@@ -59,6 +59,56 @@ def _client(monkeypatch, tmp_path):
 
 
 class TestFilesRouter:
+    def test_source_and_draft_writes_sync_and_delete_cloud_first(self, tmp_path, monkeypatch):
+        client, pm = _client(monkeypatch, tmp_path)
+        calls: list[tuple[str, tuple[str, ...]]] = []
+
+        class _Storage:
+            enabled = True
+
+            @staticmethod
+            def is_media_relative_path(_path):
+                return False
+
+            def sync_project_paths(self, _project, paths):
+                calls.append(("sync", tuple(str(path) for path in paths)))
+
+            async def sync_project_paths_async(self, _project, paths):
+                self.sync_project_paths(_project, paths)
+
+            def delete_project_paths(self, _name, paths):
+                calls.append(("delete", tuple(str(path) for path in paths)))
+
+        storage = _Storage()
+        monkeypatch.setattr(files, "get_media_storage", lambda *_args: storage)
+
+        with client:
+            source_update = client.put(
+                "/api/v1/projects/demo/source/chapter.txt",
+                content="updated",
+                headers={"content-type": "text/plain"},
+            )
+            source_delete = client.delete("/api/v1/projects/demo/source/chapter.txt")
+            draft_update = client.put(
+                "/api/v1/projects/demo/drafts/1/step1",
+                content="draft content",
+                headers={"content-type": "text/plain"},
+            )
+            draft_path = pm.get_project_path("demo") / draft_update.json()["path"]
+            draft_delete = client.delete("/api/v1/projects/demo/drafts/1/step1")
+
+        assert source_update.status_code == 200
+        assert source_delete.status_code == 200
+        assert draft_update.status_code == 200
+        assert draft_delete.status_code == 200
+        assert not draft_path.exists()
+        assert calls == [
+            ("sync", ("source/chapter.txt",)),
+            ("delete", ("source/chapter.txt",)),
+            ("sync", ("drafts/episode_1/step1_segments.json",)),
+            ("delete", ("drafts/episode_1/step1_segments.json",)),
+        ]
+
     def test_media_file_redirects_to_private_qiniu_url(self, tmp_path, monkeypatch):
         client, pm = _client(monkeypatch, tmp_path)
 

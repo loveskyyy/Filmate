@@ -1118,6 +1118,10 @@ async def _finalize_video_task(
             asset_path=f"thumbnails/scene_{resource_id}.jpg",
         )
     else:
+        await get_media_storage().delete_project_paths_async(
+            project_name,
+            [f"thumbnails/scene_{resource_id}.jpg"],
+        )
         thumbnail_file.unlink(missing_ok=True)
 
     if thumbnail_file.is_file():

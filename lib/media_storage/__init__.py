@@ -1,4 +1,4 @@
-"""项目媒体的对象存储与本地缓存支持。"""
+"""项目业务文件的对象存储、工作副本与媒体缓存支持。"""
 
 from lib.media_storage.service import (
     MediaStorage,

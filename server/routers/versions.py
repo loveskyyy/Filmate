@@ -278,12 +278,14 @@ async def restore_version(
             if resource_type == "videos":
                 thumbnail_path = project_path / "thumbnails" / f"scene_{resource_id}.jpg"
                 thumbnail_key = f"thumbnails/scene_{resource_id}.jpg"
+                get_media_storage().delete_project_paths(project_name, [thumbnail_key])
                 thumbnail_path.unlink(missing_ok=True)
                 # fingerprint=0 通知前端该文件已失效（poster 消失直到重新生成）
                 asset_fingerprints[thumbnail_key] = 0
             elif resource_type == "reference_videos":
                 thumbnail_path = project_path / "reference_videos" / "thumbnails" / f"{resource_id}.jpg"
                 thumbnail_key = f"reference_videos/thumbnails/{resource_id}.jpg"
+                get_media_storage().delete_project_paths(project_name, [thumbnail_key])
                 thumbnail_path.unlink(missing_ok=True)
                 asset_fingerprints[thumbnail_key] = 0
 

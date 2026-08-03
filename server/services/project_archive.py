@@ -304,7 +304,7 @@ class ProjectArchiveService:
                         )
                     migrate_project_dir(staging_dir)
 
-                    # 导入归档的媒体先写入七牛，并以最终项目编号构造对象键。上传失败时
+                    # 导入归档的项目业务文件先写入七牛，并以最终项目编号构造对象键。上传失败时
                     # staging 会被自动清理，目标项目也尚未替换，避免产生引用了缺失云对象的项目。
                     storage = get_media_storage(self.project_manager.projects_root)
                     if storage.enabled and conflict_resolution == "overwritten":
@@ -318,7 +318,7 @@ class ProjectArchiveService:
                             },
                         )
                     if storage.enabled:
-                        storage.sync_project_media(staging_dir, object_project_name=target_name)
+                        storage.sync_project_files(staging_dir, object_project_name=target_name)
 
                     self._install_project_dir(
                         staging_dir,
@@ -354,7 +354,9 @@ class ProjectArchiveService:
         scope: str,
     ) -> tuple[tempfile.TemporaryDirectory[str], Path, dict[str, Any], ArchiveDiagnostics]:
         source_dir = self.project_manager.get_project_path(project_name)
-        get_media_storage(self.project_manager.projects_root).materialize_project_media(source_dir)
+        storage = get_media_storage(self.project_manager.projects_root)
+        storage.materialize_project_data(source_dir)
+        storage.materialize_project_media(source_dir)
         temp_dir = tempfile.TemporaryDirectory(prefix="arcreel-export-")
         snapshot_dir = Path(temp_dir.name) / project_name
         self._copy_visible_tree(source_dir, snapshot_dir)

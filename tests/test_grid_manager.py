@@ -1,5 +1,6 @@
 """Tests for GridManager file-based CRUD."""
 
+import lib.grid_manager as grid_manager_module
 from lib.grid.models import GridGeneration
 from lib.grid_manager import GridManager
 
@@ -20,6 +21,33 @@ def _make_grid(**kwargs) -> GridGeneration:
 
 
 class TestGridManager:
+    def test_cloud_storage_syncs_metadata_and_deletes_before_local(self, tmp_path, monkeypatch):
+        calls: list[tuple[str, tuple[str, ...]]] = []
+
+        class _Storage:
+            def materialize_project_file(self, project_path, relative_path):
+                return project_path / relative_path
+
+            def sync_project_paths(self, _project_path, relative_paths):
+                calls.append(("sync", tuple(str(path) for path in relative_paths)))
+
+            def delete_project_paths(self, _project_name, relative_paths):
+                paths = tuple(str(path) for path in relative_paths)
+                assert (tmp_path / paths[0]).exists()
+                assert not (tmp_path / paths[1]).exists()
+                calls.append(("delete", paths))
+
+        monkeypatch.setattr(grid_manager_module, "get_media_storage", lambda _root: _Storage())
+        gm = GridManager(tmp_path)
+        grid = _make_grid()
+        gm.save(grid)
+
+        assert gm.delete(grid.id) is True
+        assert calls == [
+            ("sync", (f"grids/{grid.id}.json",)),
+            ("delete", (f"grids/{grid.id}.json", f"grids/{grid.id}.png")),
+        ]
+
     def test_save_and_load(self, tmp_path):
         gm = GridManager(tmp_path)
         grid = _make_grid()

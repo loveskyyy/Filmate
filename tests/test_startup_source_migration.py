@@ -1,6 +1,9 @@
 import asyncio
 from pathlib import Path
 
+import pytest
+
+from lib.media_storage import MediaStorageError
 from server.app import _migrate_source_encoding_on_startup  # 即将新增的内部函数
 
 
@@ -48,3 +51,20 @@ def test_startup_migration_isolates_project_failures(tmp_path: Path, monkeypatch
     assert (bad / ".arcreel" / "migration_errors.log").exists()
     assert "good" in summary
     assert "bad" in summary
+
+
+def test_startup_migration_fails_before_marker_when_cloud_sync_fails(tmp_path: Path, monkeypatch):
+    project = tmp_path / "p1"
+    (project / "source").mkdir(parents=True)
+    (project / "source" / "n.txt").write_bytes(("第一章\n" * 30).encode("gbk"))
+
+    class _FailingStorage:
+        def sync_project_paths(self, *_args, **_kwargs):
+            raise MediaStorageError("upload failed")
+
+    monkeypatch.setattr("server.app.get_media_storage", lambda _root: _FailingStorage())
+
+    with pytest.raises(MediaStorageError, match="upload failed"):
+        asyncio.run(_migrate_source_encoding_on_startup(tmp_path))
+
+    assert not (project / ".arcreel" / "source_encoding_migrated").exists()

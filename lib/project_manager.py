@@ -29,6 +29,7 @@ from lib.db.base import DEFAULT_USER_ID
 from lib.episode_ledger import SOURCE_TEXT_SUFFIXES
 from lib.episode_paths import episode_script_relpath
 from lib.json_io import atomic_write_json, load_json, load_json_or_none
+from lib.media_storage import get_media_storage
 from lib.profile_manifest import (
     VALID_CONTENT_MODES,
     ContentMode,
@@ -187,7 +188,7 @@ class ProjectManager:
         prefix = self._slugify_project_title(title or "")
         while True:
             candidate = f"{prefix}-{secrets.token_hex(4)}"
-            if not (self.projects_root / candidate).exists():
+            if not self.project_exists(candidate):
                 return candidate
 
     @classmethod
@@ -218,13 +219,31 @@ class ProjectManager:
 
         self.projects_root = Path(projects_root)
         self.projects_root.mkdir(parents=True, exist_ok=True)
+        self._cloud_reconciled_projects: set[str] = set()
 
     def list_projects(self, *, user_id: int | None = None) -> list[str]:
         """列出项目；传入 ``user_id`` 时仅返回该用户拥有的项目。"""
-        names = [d.name for d in self.projects_root.iterdir() if d.is_dir() and not d.name.startswith((".", "_"))]
+        local_names = [d.name for d in self.projects_root.iterdir() if d.is_dir() and not d.name.startswith((".", "_"))]
+        storage = get_media_storage(self.projects_root)
+        remote_names = storage.list_project_names() if storage.enabled else []
+        names = list(dict.fromkeys([*local_names, *remote_names]))
         if user_id is None:
             return names
-        return [name for name in names if self.is_project_owned_by(name, user_id)]
+        with self._project_owners_lock():
+            owners = self._read_project_owners_unlocked()
+        local_name_set = set(local_names)
+        remote_name_set = set(remote_names)
+        return [
+            name
+            for name in names
+            if owners.get(name) == user_id
+            or (
+                name in local_name_set
+                and name not in remote_name_set
+                and name not in owners
+                and user_id == DEFAULT_USER_ID
+            )
+        ]
 
     @property
     def _project_owners_path(self) -> Path:
@@ -255,11 +274,19 @@ class ProjectManager:
     def get_project_owner(self, name: str) -> int:
         """返回项目所有者；存量无登记项目归默认用户。"""
         name = self.normalize_project_name(name)
-        if not (self.projects_root / name / self.PROJECT_FILE).exists():
-            raise FileNotFoundError(f"项目 '{name}' 不存在")
+        local_exists = (self.projects_root / name / self.PROJECT_FILE).is_file()
         with self._project_owners_lock():
             owners = self._read_project_owners_unlocked()
-        return owners.get(name, DEFAULT_USER_ID)
+        owner = owners.get(name)
+        storage = get_media_storage(self.projects_root)
+        remote_exists = storage.enabled and storage.project_file_exists(name, self.PROJECT_FILE)
+        if owner is not None and (local_exists or remote_exists):
+            return owner
+        if local_exists and not remote_exists:
+            return DEFAULT_USER_ID
+        if not remote_exists or owner is None:
+            raise FileNotFoundError(f"项目 '{name}' 不存在或未登记所有者")
+        raise FileNotFoundError(f"项目 '{name}' 不存在或未登记所有者")
 
     def is_project_owned_by(self, name: str, user_id: int) -> bool:
         try:
@@ -325,8 +352,8 @@ class ProjectManager:
         """
         name = self.normalize_project_name(name)
         project_dir = self.projects_root / name
-
-        if project_dir.exists():
+        storage = get_media_storage(self.projects_root)
+        if project_dir.exists() or (storage.enabled and storage.project_file_exists(name, self.PROJECT_FILE)):
             raise FileExistsError(f"项目 '{name}' 已存在")
 
         # 创建所有子目录
@@ -335,12 +362,25 @@ class ProjectManager:
 
         # 持久化 content_mode 到 project.json，让后续 sync_all_agent_profiles 启动遍历能恢复模式。
         # server 路径随后会调 create_project_metadata 覆盖为完整版（也含 content_mode）。
+        upload_started = False
         try:
             atomic_write_json(project_dir / self.PROJECT_FILE, {"content_mode": content_mode})
             self.sync_agent_profile(project_dir, content_mode=content_mode)
             self.set_project_owner(name, user_id)
-        except Exception:
+            upload_started = True
+            storage.sync_project_paths(project_dir, [self.PROJECT_FILE])
+            self._cloud_reconciled_projects.add(name)
+        except Exception as create_exc:
             # sync 失败时回滚 project_dir，避免残缺目录阻塞重试（同名 create 撞 FileExistsError）
+            if upload_started:
+                try:
+                    storage.delete_project(name)
+                except Exception as cleanup_exc:
+                    create_exc.add_note(f"七牛项目创建回滚失败: {type(cleanup_exc).__name__}")
+            try:
+                self.remove_project_owner(name)
+            except Exception:
+                logger.exception("项目创建回滚所有权失败: %s", name)
             shutil.rmtree(project_dir, ignore_errors=True)
             raise
 
@@ -510,7 +550,34 @@ class ProjectManager:
         if not real.startswith(base):
             raise ValueError(f"非法项目名称: '{name}'")
         project_dir = Path(real)
-        if not project_dir.exists():
+        project_file = project_dir / self.PROJECT_FILE
+        storage = get_media_storage(self.projects_root)
+        if storage.enabled and name not in self._cloud_reconciled_projects:
+            remote_exists = storage.project_file_exists(name, self.PROJECT_FILE)
+            if not project_file.is_file() and not remote_exists:
+                raise FileNotFoundError(f"项目 '{name}' 不存在")
+            project_dir.mkdir(parents=True, exist_ok=True)
+            if remote_exists:
+                storage.materialize_project_data(project_dir)
+            if not project_file.is_file():
+                raise FileNotFoundError(f"项目 '{name}' 云端元数据不存在")
+            from lib.project_migrations.runner import migrate_project_dir
+            from lib.source_loader.migration import migrate_project_source_encoding
+
+            encoding_summary = migrate_project_source_encoding(project_dir)
+            schema_migrated = migrate_project_dir(project_dir)
+            if not remote_exists or encoding_summary.migrated or schema_migrated:
+                storage.sync_project_files(
+                    project_dir,
+                    preserve_local_on_failure=not remote_exists,
+                )
+            for subdir in self.SUBDIRS:
+                (project_dir / subdir).mkdir(parents=True, exist_ok=True)
+            self.sync_agent_profile(project_dir)
+            self._cloud_reconciled_projects.add(name)
+        if storage.enabled and not project_file.is_file():
+            raise FileNotFoundError(f"项目 '{name}' 不存在")
+        if not storage.enabled and not project_dir.exists():
             raise FileNotFoundError(f"项目 '{name}' 不存在")
         return project_dir
 
@@ -738,6 +805,10 @@ class ProjectManager:
 
         # 原子写（含路径遍历防护，output_path 已在守卫前解析），避免并发 PATCH 导致 JSON 损坏
         atomic_write_json(output_path, script)
+        get_media_storage(self.projects_root).sync_project_paths(
+            output_path.parents[1],
+            [f"scripts/{output_path.name}"],
+        )
 
         # 同步到 project.json，保证 script 写入与元数据同步是单一事务
         # （sync 走的是 `_project_lock`，与外层 `_script_lock` 不同锁，不会冲突）。
@@ -816,6 +887,10 @@ class ProjectManager:
                 self._migrate_legacy_style(project)
                 self._touch_metadata(project)
                 atomic_write_json(self._get_project_file_path(project_name), project)
+                get_media_storage(self.projects_root).sync_project_paths(
+                    self.get_project_path(project_name),
+                    [self.PROJECT_FILE],
+                )
                 emit_project_change_hint(project_name, changed_paths=[self.PROJECT_FILE])
 
     @staticmethod
@@ -952,6 +1027,11 @@ class ProjectManager:
             filename = filename[len("scripts/") :]
         real = Path(self._safe_subpath(project_dir / "scripts", filename))
 
+        if not real.exists():
+            get_media_storage(self.projects_root).materialize_project_file(
+                project_dir,
+                f"scripts/{filename}",
+            )
         if not real.exists():
             raise FileNotFoundError(f"剧本文件不存在: {real}")
 
@@ -1432,10 +1512,11 @@ class ProjectManager:
 
     def project_exists(self, project_name: str) -> bool:
         """检查项目元数据文件是否存在"""
-        try:
-            return self._get_project_file_path(project_name).exists()
-        except FileNotFoundError:
-            return False
+        project_name = self.normalize_project_name(project_name)
+        if (self.projects_root / project_name / self.PROJECT_FILE).is_file():
+            return True
+        storage = get_media_storage(self.projects_root)
+        return storage.enabled and storage.project_file_exists(project_name, self.PROJECT_FILE)
 
     @staticmethod
     def _migrate_legacy_style(project: dict) -> bool:
@@ -1481,6 +1562,10 @@ class ProjectManager:
                 atomic_write_json(project_file, project)
                 migrated = True
         if migrated:
+            get_media_storage(self.projects_root).sync_project_paths(
+                project_file.parent,
+                [self.PROJECT_FILE],
+            )
             emit_project_change_hint(
                 project_name,
                 changed_paths=[self.PROJECT_FILE],
@@ -1541,6 +1626,10 @@ class ProjectManager:
 
         with self._project_lock(project_name):
             atomic_write_json(project_file, project)
+        get_media_storage(self.projects_root).sync_project_paths(
+            project_file.parent,
+            [self.PROJECT_FILE],
+        )
 
         emit_project_change_hint(
             project_name,
@@ -1577,6 +1666,10 @@ class ProjectManager:
             self._migrate_legacy_style(project)
             self._touch_metadata(project)
             atomic_write_json(project_file, project)
+        get_media_storage(self.projects_root).sync_project_paths(
+            project_file.parent,
+            [self.PROJECT_FILE],
+        )
 
         emit_project_change_hint(
             project_name,

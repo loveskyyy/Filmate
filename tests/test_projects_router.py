@@ -288,7 +288,7 @@ class TestProjectsRouter:
         calls: list[str] = []
 
         class _Storage:
-            def delete_project_media(self, name: str) -> None:
+            def delete_project(self, name: str) -> None:
                 assert fake_pm.get_project_path(name).exists()
                 calls.append(f"cloud:{name}")
 
@@ -305,8 +305,8 @@ class TestProjectsRouter:
         fake_pm = _FakePM(tmp_path)
 
         class _Storage:
-            def delete_project_media(self, _name: str) -> None:
-                raise MediaStorageError("七牛项目媒体删除失败")
+            def delete_project(self, _name: str) -> None:
+                raise MediaStorageError("七牛项目文件删除失败")
 
         monkeypatch.setattr(projects, "get_media_storage", lambda root: _Storage())
         client = _client(monkeypatch, fake_pm, _FakeCalc())
@@ -341,6 +341,24 @@ class TestProjectsRouter:
                 json={"name": "bad", "title": "X", "content_mode": "drama", "source_kind": "screen_play"},
             )
             assert invalid.status_code == 422
+
+    def test_create_rolls_back_project_when_metadata_commit_fails(self, tmp_path, monkeypatch):
+        fake_pm = _FakePM(tmp_path)
+
+        def _fail_metadata(*_args, **_kwargs):
+            raise RuntimeError("metadata upload failed")
+
+        monkeypatch.setattr(fake_pm, "create_project_metadata", _fail_metadata)
+        client = _client(monkeypatch, fake_pm, _FakeCalc())
+
+        with client:
+            response = client.post(
+                "/api/v1/projects",
+                json={"name": "rollback-me", "title": "Rollback", "content_mode": "narration"},
+            )
+
+        assert response.status_code == 500
+        assert not (tmp_path / "rollback-me").exists()
 
     def test_source_kind_not_editable_after_create(self, tmp_path, monkeypatch):
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())

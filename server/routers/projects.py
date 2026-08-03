@@ -547,20 +547,29 @@ async def create_project(
             # generation_mode 并入 extras 一次性写入，避免 create 后再 load-save 的额外 RMW
             if req.generation_mode is not None:
                 extras["generation_mode"] = req.generation_mode
-            with project_change_source("webui"):
-                project = manager.create_project_metadata(
-                    project_name,
-                    title or manual_name,
-                    style_prompt,
-                    req.content_mode,
-                    aspect_ratio=req.aspect_ratio,
-                    default_duration=req.default_duration,
-                    style_template_id=req.style_template_id,
-                    extras=extras or None,
-                    target_duration=req.target_duration,
-                    brief=req.brief,
-                    source_kind=req.source_kind,
-                )
+            try:
+                with project_change_source("webui"):
+                    project = manager.create_project_metadata(
+                        project_name,
+                        title or manual_name,
+                        style_prompt,
+                        req.content_mode,
+                        aspect_ratio=req.aspect_ratio,
+                        default_duration=req.default_duration,
+                        style_template_id=req.style_template_id,
+                        extras=extras or None,
+                        target_duration=req.target_duration,
+                        brief=req.brief,
+                        source_kind=req.source_kind,
+                    )
+            except Exception as create_exc:
+                try:
+                    get_media_storage(manager.projects_root).delete_project(project_name)
+                    manager.delete_project_directory(project_name)
+                    manager.remove_project_owner(project_name)
+                except Exception as cleanup_exc:
+                    create_exc.add_note(f"项目创建回滚失败: {type(cleanup_exc).__name__}")
+                raise
             return {"success": True, "name": project_name, "project": project}
 
         return await asyncio.to_thread(_sync)
@@ -839,7 +848,7 @@ async def delete_project(name: str, _user: CurrentUser, _t: Translator):
             # 先验证本地项目存在，随后删除同名七牛前缀。云端操作失败时不删除本地目录，
             # 以免留下无法恢复的部分删除状态。
             project_manager.get_project_path(name)
-            get_media_storage(project_manager.projects_root).delete_project_media(name)
+            get_media_storage(project_manager.projects_root).delete_project(name)
             project_manager.delete_project_directory(name)
             project_manager.remove_project_owner(name)
             return {"success": True, "message": _t("project_deleted", name=name)}
@@ -1275,12 +1284,20 @@ async def set_project_source(
                 if len(text) > MAX_CHARS:
                     raise HTTPException(status_code=400, detail=_t("file_too_large", max_chars=MAX_CHARS))
                 (source_dir / safe_filename).write_text(text, encoding="utf-8")
+                get_media_storage(manager.projects_root).sync_project_paths(
+                    project_dir,
+                    [f"source/{safe_filename}"],
+                )
                 return safe_filename, len(text)
             else:
                 if len(text_content) > MAX_CHARS:
                     raise HTTPException(status_code=400, detail=_t("file_too_large", max_chars=MAX_CHARS))
                 safe_filename = "novel.txt"
                 (source_dir / safe_filename).write_text(text_content, encoding="utf-8")
+                get_media_storage(manager.projects_root).sync_project_paths(
+                    project_dir,
+                    [f"source/{safe_filename}"],
+                )
                 return safe_filename, len(text_content)
 
         safe_filename, chars = await asyncio.to_thread(_sync_write)

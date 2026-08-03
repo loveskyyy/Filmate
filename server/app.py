@@ -37,6 +37,7 @@ from lib.db import async_session_factory, close_db, init_db
 from lib.generation_worker import GenerationWorker
 from lib.httpx_shared import shutdown_http_client, startup_http_client
 from lib.logging_config import attach_file_handler, migrate_legacy_log_dir, setup_logging
+from lib.media_storage import MediaStorageError, get_media_storage
 from lib.project_migrations import cleanup_stale_backups, run_project_migrations
 from lib.source_loader.migration import migrate_project_source_encoding
 from server.auth import ensure_auth_password
@@ -268,10 +269,11 @@ def _log_profile_sync_outcome(stats: dict, *, log: logging.Logger = logger) -> N
 
 
 async def _migrate_source_encoding_on_startup(projects_root: Path) -> dict[str, dict]:
-    """对每个项目执行幂等编码迁移。失败被捕获并写日志，不阻塞启动。"""
+    """执行幂等编码迁移；文件错误隔离，云端提交错误则中止启动。"""
     summary: dict[str, dict] = {}
     if not projects_root.exists():
         return summary
+    storage = get_media_storage(projects_root)
 
     def _run_one(project_dir: Path) -> dict:
         marker_dir = project_dir / ".arcreel"
@@ -280,6 +282,17 @@ async def _migrate_source_encoding_on_startup(projects_root: Path) -> dict[str, 
             return {"skipped": True}
         try:
             result = migrate_project_source_encoding(project_dir)
+            if result.migrated:
+                relative_paths = [
+                    relative_path
+                    for filename in result.migrated
+                    for relative_path in (f"source/{filename}", f"source/raw/{filename}")
+                ]
+                storage.sync_project_paths(
+                    project_dir,
+                    relative_paths,
+                    preserve_local_on_failure=True,
+                )
             marker_dir.mkdir(exist_ok=True)
             marker.touch()
             if result.failed:
@@ -293,6 +306,9 @@ async def _migrate_source_encoding_on_startup(projects_root: Path) -> dict[str, 
                 "skipped": result.skipped,
                 "failed": result.failed,
             }
+        except MediaStorageError:
+            logger.exception("源文件编码迁移无法提交七牛 project=%s，server 启动中止", project_dir.name)
+            raise
         except Exception as exc:  # noqa: BLE001
             logger.exception(
                 "源文件编码迁移失败 project=%s，已跳过，server 继续启动",
@@ -358,6 +374,13 @@ async def lifespan(app: FastAPI):
     # Both calls are synchronous filesystem walks — offload to a worker thread
     # so they don't block the event loop during uvicorn startup.
     migration_summary = await asyncio.to_thread(run_project_migrations, projects_root)
+    storage = get_media_storage(projects_root)
+    for project_name in migration_summary.migrated:
+        await asyncio.to_thread(
+            storage.sync_project_files,
+            projects_root / project_name,
+            preserve_local_on_failure=True,
+        )
     if migration_summary.migrated or migration_summary.failed:
         logger.info(
             "Project migrations: migrated=%s skipped=%d failed=%s",

@@ -512,7 +512,7 @@ class TestProjectArchiveService:
         assert pm.get_project_path("demo").exists()
         assert pm.get_project_path(result.project_name).exists()
 
-    def test_import_syncs_media_to_qiniu_before_installing_project(self, tmp_path, monkeypatch):
+    def test_import_syncs_project_files_to_qiniu_before_installing_project(self, tmp_path, monkeypatch):
         pm = ProjectManager(tmp_path / "projects")
         _create_project(pm)
         service = ProjectArchiveService(pm)
@@ -525,7 +525,7 @@ class TestProjectArchiveService:
         class _Storage:
             enabled = True
 
-            def sync_project_media(self, project_path: Path, *, object_project_name: str) -> None:
+            def sync_project_files(self, project_path: Path, *, object_project_name: str) -> None:
                 assert project_path.name == "project"
                 assert not target_dir.exists()
                 synced.append(
@@ -534,7 +534,8 @@ class TestProjectArchiveService:
                         sorted(
                             path.relative_to(project_path).as_posix()
                             for path in project_path.rglob("*")
-                            if path.is_file() and path.suffix in {".png", ".mp4"}
+                            if path.is_file()
+                            and not any(part.startswith(".") for part in path.relative_to(project_path).parts)
                         ),
                     )
                 )
@@ -544,21 +545,16 @@ class TestProjectArchiveService:
         result = service.import_project_archive(archive_path, uploaded_filename="demo.zip")
 
         assert result.project_name == "demo"
-        assert synced == [
-            (
-                "demo",
-                [
-                    "characters/Hero.png",
-                    "characters/refs/Hero.png",
-                    "output/final.mp4",
-                    "props/Key.png",
-                    "storyboards/scene_E1S01.png",
-                    "style_reference.png",
-                    "versions/storyboards/E1S01_v1.png",
-                    "videos/scene_E1S01.mp4",
-                ],
-            )
-        ]
+        assert len(synced) == 1
+        assert synced[0][0] == "demo"
+        assert {
+            "project.json",
+            "source/chapter.txt",
+            "scripts/episode_1.json",
+            "characters/Hero.png",
+            "output/final.mp4",
+            "videos/scene_E1S01.mp4",
+        }.issubset(set(synced[0][1]))
 
     def test_import_does_not_install_project_when_qiniu_sync_fails(self, tmp_path, monkeypatch):
         pm = ProjectManager(tmp_path / "projects")
@@ -570,7 +566,7 @@ class TestProjectArchiveService:
         class _Storage:
             enabled = True
 
-            def sync_project_media(self, _project_path: Path, *, object_project_name: str) -> None:
+            def sync_project_files(self, _project_path: Path, *, object_project_name: str) -> None:
                 assert object_project_name == "demo"
                 raise MediaStorageError("七牛媒体上传失败")
 
@@ -633,7 +629,7 @@ class TestProjectArchiveService:
         class _Storage:
             enabled = True
 
-            def sync_project_media(self, *_args, **_kwargs) -> None:
+            def sync_project_files(self, *_args, **_kwargs) -> None:
                 raise AssertionError("覆盖导入不应开始上传七牛对象")
 
         monkeypatch.setattr(project_archive_module, "get_media_storage", lambda _root: _Storage())
@@ -758,6 +754,7 @@ class TestProjectArchiveService:
 
         # 残缺目录已清，同名 create 应该能成功（fixture 已 stub sync 抛错，所以先 undo）
         monkeypatch.undo()
+        monkeypatch.setenv("QINIU_ENABLED", "false")
         assert not (tmp_path / "projects" / "ghost").exists()
         pm.create_project("ghost")  # 不撞 FileExistsError
         assert (tmp_path / "projects" / "ghost").is_dir()

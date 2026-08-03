@@ -15,6 +15,7 @@ from lib.generation_queue_client import (
     TaskSpec,
     batch_enqueue_and_wait,
 )
+from lib.media_storage import get_media_storage
 from lib.prompt_utils import image_prompt_to_yaml, is_structured_image_prompt, normalize_style
 from lib.storyboard_sequence import (
     StoryboardTaskPlan,
@@ -46,9 +47,9 @@ class _FailureRecorder:
                 }
             )
 
-    def save(self) -> None:
+    def save(self) -> Path | None:
         if not self.failures:
-            return
+            return None
         with self._lock:
             data = {
                 "generated_at": datetime.now(UTC).isoformat(),
@@ -57,6 +58,7 @@ class _FailureRecorder:
             }
             self.output_path.parent.mkdir(parents=True, exist_ok=True)
             self.output_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        return self.output_path
 
 
 def _build_prompt(
@@ -205,7 +207,12 @@ def generate_storyboards_tool(ctx: ToolContext):
             resource_type = "segment" if id_field == "segment_id" else "scene"
             for f in failures:
                 recorder.record(f.resource_id, resource_type, f.error or "unknown")
-            recorder.save()
+            failure_path = recorder.save()
+            if failure_path is not None:
+                await get_media_storage(ctx.projects_root).sync_project_paths_async(
+                    project_dir,
+                    [failure_path.relative_to(project_dir).as_posix()],
+                )
 
             details: list[str] = []
             success_map = {s.resource_id: s for s in successes}

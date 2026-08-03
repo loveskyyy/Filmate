@@ -178,6 +178,10 @@ async def finalize_shot_video_upload(
     if await extract_video_thumbnail(video_file, thumbnail_file):
         thumb_rel: str | None = f"thumbnails/scene_{shot_id}.jpg"
     else:
+        await get_media_storage().delete_project_paths_async(
+            project_name,
+            [f"thumbnails/scene_{shot_id}.jpg"],
+        )
         thumbnail_file.unlink(missing_ok=True)
         thumb_rel = None
 

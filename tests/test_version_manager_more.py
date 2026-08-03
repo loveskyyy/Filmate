@@ -1,9 +1,34 @@
 import pytest
 
+import lib.version_manager as version_manager_module
 from lib.version_manager import VersionManager, _get_versions_file_lock
 
 
 class TestVersionManagerMore:
+    def test_cloud_storage_tracks_version_file_index_and_restore(self, tmp_path, monkeypatch):
+        synced: list[tuple[str, ...]] = []
+
+        class _Storage:
+            def materialize_project_file(self, project_path, relative_path):
+                return project_path / relative_path
+
+            def sync_project_paths(self, _project_path, relative_paths):
+                synced.append(tuple(str(path) for path in relative_paths))
+
+        monkeypatch.setattr(version_manager_module, "get_media_storage", lambda _root: _Storage())
+        project = tmp_path / "demo"
+        current = project / "characters" / "Alice.png"
+        current.parent.mkdir(parents=True)
+        current.write_bytes(b"v1")
+        vm = VersionManager(project)
+
+        vm.add_version("characters", "Alice", "prompt", source_file=current)
+        vm.restore_version("characters", "Alice", 1, current)
+
+        assert any(paths[0].startswith("versions/characters/") for paths in synced)
+        assert synced.count(("versions/versions.json",)) == 2
+        assert ("characters/Alice.png",) in synced
+
     def test_lock_is_reused_for_same_file(self, tmp_path):
         file_a = tmp_path / "a" / "versions.json"
         file_a.parent.mkdir(parents=True)

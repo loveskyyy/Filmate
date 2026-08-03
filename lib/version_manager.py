@@ -11,6 +11,7 @@ import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
+from lib.media_storage import get_media_storage
 from lib.resource_paths import RESOURCE_TYPES as _RESOURCE_TYPES
 from lib.resource_paths import resource_extension
 
@@ -58,6 +59,10 @@ class VersionManager:
 
     def _load_versions(self) -> dict:
         """加载版本元数据"""
+        get_media_storage(self.project_path.parent).materialize_project_file(
+            self.project_path,
+            "versions/versions.json",
+        )
         if not self.versions_file.exists():
             return {rt: {} for rt in self.RESOURCE_TYPES}
 
@@ -68,6 +73,10 @@ class VersionManager:
         """保存版本元数据"""
         with open(self.versions_file, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        get_media_storage(self.project_path.parent).sync_project_paths(
+            self.project_path,
+            ["versions/versions.json"],
+        )
 
     def _generate_timestamp(self) -> str:
         """生成时间戳字符串（用于文件名）"""
@@ -170,6 +179,10 @@ class VersionManager:
             # 如果有源文件，复制到版本目录
             if source_file and Path(source_file).exists():
                 shutil.copy2(source_file, version_abs_path)
+                get_media_storage(self.project_path.parent).sync_project_paths(
+                    self.project_path,
+                    [version_rel_path],
+                )
 
             # 创建版本记录
             version_record = {
@@ -286,11 +299,20 @@ class VersionManager:
                 raise ValueError(f"版本不存在: {version}")
 
             target_file = self.project_path / target_version["file"]
+            get_media_storage(self.project_path.parent).materialize_project_file(
+                self.project_path,
+                target_version["file"],
+            )
             if not target_file.exists():
                 raise FileNotFoundError(f"版本文件不存在: {target_file}")
 
             current_file.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(target_file, current_file)
+            current_rel_path = current_file.resolve().relative_to(self.project_path.resolve()).as_posix()
+            get_media_storage(self.project_path.parent).sync_project_paths(
+                self.project_path,
+                [current_rel_path],
+            )
 
             resource_data["current_version"] = version
             self._save_versions(data)

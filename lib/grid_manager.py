@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 from lib.grid.models import GridGeneration
+from lib.media_storage import get_media_storage
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,9 @@ class GridManager:
     """File-based CRUD for GridGeneration records, stored in {project}/grids/."""
 
     def __init__(self, project_path: Path):
-        self._dir = project_path / "grids"
+        self._project_path = Path(project_path)
+        self._storage = get_media_storage(self._project_path.parent)
+        self._dir = self._project_path / "grids"
         self._dir.mkdir(parents=True, exist_ok=True)
 
     def _path(self, grid_id: str) -> Path:
@@ -23,10 +26,15 @@ class GridManager:
         """Write grid as JSON to {grid_id}.json."""
         path = self._path(grid.id)
         path.write_text(json.dumps(grid.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        self._storage.sync_project_paths(self._project_path, [path.relative_to(self._project_path).as_posix()])
 
     def get(self, grid_id: str) -> GridGeneration | None:
         """Read and return a GridGeneration by id, or None if not found."""
         path = self._path(grid_id)
+        self._storage.materialize_project_file(
+            self._project_path,
+            path.relative_to(self._project_path).as_posix(),
+        )
         if not path.exists():
             return None
         return GridGeneration.from_dict(json.loads(path.read_text(encoding="utf-8")))
@@ -38,6 +46,11 @@ class GridManager:
             return False
         # Also remove the grid image if it exists
         image_path = self._dir / f"{grid_id}.png"
+        delete_paths = [
+            path.relative_to(self._project_path).as_posix(),
+            image_path.relative_to(self._project_path).as_posix(),
+        ]
+        self._storage.delete_project_paths(self._project_path.name, delete_paths)
         if image_path.exists():
             image_path.unlink()
         path.unlink()

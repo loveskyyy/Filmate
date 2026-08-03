@@ -31,6 +31,7 @@ from lib.episode_ledger import (
     parse_episode_num,
 )
 from lib.episode_paths import episode_script_relpath
+from lib.media_storage import get_media_storage
 from lib.project_manager import ProjectManager, resolve_source_kind
 from lib.text_backends.base import (
     DEFAULT_MAX_OUTPUT_TOKENS,
@@ -930,18 +931,23 @@ class EpisodePlanner:
         source_dir.mkdir(exist_ok=True)
         for episode_path, content in writes:
             episode_path.write_text(content, encoding="utf-8")
-        for num, path in discover_episode_files(self.project_path).items():
-            if num not in keep:
+        storage = get_media_storage(self.project_path.parent)
+        storage.sync_project_paths(
+            self.project_path,
+            [path.relative_to(self.project_path).as_posix() for path, _content in writes],
+        )
+        stale_paths = [path for num, path in discover_episode_files(self.project_path).items() if num not in keep]
+        remaining = source_dir / "_remaining.txt"
+        if remaining.is_file():
+            stale_paths.append(remaining)
+        if stale_paths:
+            stale_relative_paths = [path.relative_to(self.project_path).as_posix() for path in stale_paths]
+            storage.delete_project_paths(self.project_name, stale_relative_paths)
+            for path in stale_paths:
                 try:
                     path.unlink()
                 except OSError as exc:
                     logger.warning("残留派生文件清理失败（不阻断提交）：%s: %s", path, exc)
-        remaining = source_dir / "_remaining.txt"
-        if remaining.is_file():
-            try:
-                remaining.unlink()
-            except OSError as exc:
-                logger.warning("余文文件清理失败（不阻断提交）：%s: %s", remaining, exc)
 
 
 def _sort_episodes_if_possible(episodes: list[Any]) -> None:

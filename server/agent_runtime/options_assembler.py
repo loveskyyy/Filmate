@@ -10,6 +10,7 @@ policy，装配天职是开会话时现场读 DB / 扫盘则允许 I/O 归本类
 ``configure_sandbox_runtime`` 整体换新 policy 后对后续所有会话立即生效。
 """
 
+import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable, Sequence
@@ -25,6 +26,7 @@ from lib.agent_session_store.store import DbSessionStore
 from lib.db.base import DEFAULT_USER_ID
 from lib.db.engine import async_session_factory as default_async_session_factory
 from lib.i18n import DEFAULT_LOCALE, LOCALE_LANGUAGE_MAP
+from lib.media_storage import get_media_storage
 from server.agent_runtime.agent_access_policy import AgentAccessPolicy
 from server.agent_runtime.sdk_tools import build_arcreel_mcp_server
 
@@ -215,6 +217,8 @@ class OptionsAssembler:
         transcripts_dir = self.data_dir / "transcripts"
         transcripts_dir.mkdir(parents=True, exist_ok=True)
         project_cwd = self._resolve_project_cwd(project_name)
+        storage = get_media_storage(self.projects_root)
+        storage.materialize_project_data(project_cwd)
 
         # Build PreToolUse hooks — file access control MUST use hooks because
         # Read/Glob/Grep are matched by allow rules (step 4 in the SDK
@@ -233,6 +237,7 @@ class OptionsAssembler:
             # Shared dict: PreToolUse saves file backup, PostToolUse restores
             # on corruption.  Keyed by tool_use_id.
             json_backups: dict[str, tuple[Path, str]] = {}
+            project_snapshots: dict[str, dict[str, tuple[int, int]]] = {}
 
             hooks = {
                 "PreToolUse": [
@@ -247,6 +252,10 @@ class OptionsAssembler:
                             self._build_json_validation_hook(project_cwd, json_backups),
                         ],
                     ),
+                    HookMatcher(
+                        matcher="Write|Edit|Bash",
+                        hooks=[self._build_project_snapshot_hook(project_cwd, project_snapshots)],
+                    ),
                 ],
                 "PostToolUse": [
                     HookMatcher(
@@ -254,6 +263,10 @@ class OptionsAssembler:
                         hooks=[
                             self._build_json_post_validation_hook(project_cwd, json_backups),
                         ],
+                    ),
+                    HookMatcher(
+                        matcher="Write|Edit|Bash",
+                        hooks=[self._build_project_storage_hook(project_cwd, project_snapshots)],
                     ),
                 ],
             }
@@ -328,6 +341,50 @@ class OptionsAssembler:
                 "updatedInput": updated_input,
             },
         }
+
+    def _build_project_snapshot_hook(
+        self,
+        project_cwd: Path,
+        snapshots: dict[str, dict[str, tuple[int, int]]],
+    ) -> Callable[..., Any]:
+        """在 Agent 可写工具执行前记录业务文件签名。"""
+
+        async def _snapshot_hook(
+            _input_data: dict[str, Any],
+            tool_use_id: str | None,
+            _context: Any,
+        ) -> dict[str, Any]:
+            if tool_use_id is None:
+                return {"continue_": True}
+            storage = get_media_storage(self.projects_root)
+            if storage.enabled:
+                snapshots[tool_use_id] = await asyncio.to_thread(storage.snapshot_project_files, project_cwd)
+            return {"continue_": True}
+
+        return _snapshot_hook
+
+    def _build_project_storage_hook(
+        self,
+        project_cwd: Path,
+        snapshots: dict[str, dict[str, tuple[int, int]]],
+    ) -> Callable[..., Any]:
+        """在 Agent 写工具完成后把文件差异提交到七牛；失败中断当前回合。"""
+
+        async def _storage_hook(
+            _input_data: dict[str, Any],
+            tool_use_id: str | None,
+            _context: Any,
+        ) -> dict[str, Any]:
+            if tool_use_id is None:
+                return {}
+            before = snapshots.pop(tool_use_id, None)
+            if before is None:
+                return {}
+            storage = get_media_storage(self.projects_root)
+            await asyncio.to_thread(storage.reconcile_project_files, project_cwd, before)
+            return {}
+
+        return _storage_hook
 
     def _build_file_access_hook(
         self,

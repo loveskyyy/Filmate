@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
+import server.agent_runtime.options_assembler as options_module
 from server.agent_runtime.agent_access_policy import AgentAccessPolicy
 from server.agent_runtime.options_assembler import (
     OptionsAssembler,
@@ -159,3 +160,34 @@ async def test_build_sandbox_disabled_strips_bash(tmp_path: Path) -> None:
         assert tool not in options.allowed_tools
     assert "Read" in options.allowed_tools
     assert options.sandbox == {"enabled": False}
+
+
+@pytest.mark.asyncio
+async def test_project_storage_hooks_reconcile_agent_file_changes(tmp_path: Path, monkeypatch) -> None:
+    assembler = _make_assembler(tmp_path)
+    project_cwd = tmp_path / "projects" / "demo"
+    snapshots: dict[str, dict[str, tuple[int, int]]] = {}
+
+    class _Storage:
+        enabled = True
+
+        def snapshot_project_files(self, project_path):
+            assert project_path == project_cwd
+            return {"drafts/episode_1/step1.md": (3, 1)}
+
+        def reconcile_project_files(self, project_path, before):
+            assert project_path == project_cwd
+            assert before == {"drafts/episode_1/step1.md": (3, 1)}
+            self.reconciled = True
+
+    storage = _Storage()
+    storage.reconciled = False
+    monkeypatch.setattr(options_module, "get_media_storage", lambda _root: storage)
+    pre_hook = assembler._build_project_snapshot_hook(project_cwd, snapshots)
+    post_hook = assembler._build_project_storage_hook(project_cwd, snapshots)
+
+    await pre_hook({"tool_name": "Bash"}, "tool-1", None)
+    await post_hook({"tool_name": "Bash"}, "tool-1", None)
+
+    assert storage.reconciled is True
+    assert snapshots == {}

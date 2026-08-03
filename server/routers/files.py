@@ -400,6 +400,7 @@ async def upload_file(
                 except KeyError:
                     # 入口已校验产品存在；并发删除导致的窗口期竞态按 404 处理，
                     # 已落盘的文件一并清理避免孤儿
+                    get_media_storage().delete_project_paths(project_name, [relative_path])
                     target_path.unlink(missing_ok=True)
                     raise HTTPException(status_code=404, detail=_t("product_not_found", name=name))
 
@@ -504,6 +505,10 @@ async def _handle_source_upload(
         )
 
     relative_path = f"source/{result.normalized_path.name}"
+    sync_paths = [relative_path]
+    if result.raw_path is not None:
+        sync_paths.append(result.raw_path.relative_to(project_dir).as_posix())
+    await get_media_storage(project_dir.parent).sync_project_paths_async(project_dir, sync_paths)
     return {
         "success": True,
         "filename": result.normalized_path.name,
@@ -631,6 +636,7 @@ async def update_source_file(
                 raise HTTPException(status_code=403, detail=_t("forbidden_access"))
 
             source_path.write_text(content, encoding="utf-8")
+            get_media_storage(project_dir.parent).sync_project_paths(project_dir, [f"source/{filename}"])
             return {"success": True, "path": f"source/{filename}"}
 
         return await asyncio.to_thread(_sync)
@@ -660,14 +666,21 @@ async def delete_source_file(project_name: str, filename: str, _user: CurrentUse
                 raise HTTPException(status_code=403, detail=_t("forbidden_access"))
 
             if source_path.exists():
-                source_path.unlink()
-                # 级联删除原文件备份（同 stem，任意扩展名）
+                raw_files: list[Path] = []
                 raw_dir = project_dir / "source" / "raw"
                 if raw_dir.exists():
                     stem = source_path.stem
-                    for raw_file in raw_dir.iterdir():
-                        if raw_file.is_file() and raw_file.stem == stem:
-                            raw_file.unlink()
+                    raw_files = [
+                        raw_file for raw_file in raw_dir.iterdir() if raw_file.is_file() and raw_file.stem == stem
+                    ]
+                delete_paths = [
+                    source_path.relative_to(project_dir).as_posix(),
+                    *(raw_file.relative_to(project_dir).as_posix() for raw_file in raw_files),
+                ]
+                get_media_storage(project_dir.parent).delete_project_paths(project_name, delete_paths)
+                source_path.unlink()
+                for raw_file in raw_files:
+                    raw_file.unlink()
                 return {"success": True}
             else:
                 raise HTTPException(status_code=404, detail=_t("file_not_found", path=filename))
@@ -887,6 +900,10 @@ async def update_draft_content(
 
             is_new = not draft_path.exists()
             draft_path.write_text(content, encoding="utf-8")
+            get_media_storage(project_dir.parent).sync_project_paths(
+                project_dir,
+                [draft_path.relative_to(project_dir).as_posix()],
+            )
 
             # 发射 draft 事件通知前端
             action = "created" if is_new else "updated"
@@ -933,6 +950,10 @@ async def delete_draft(project_name: str, episode: int, step_num: int, _user: Cu
             draft_path = _resolve_step1_path(drafts_dir, step_num, drafts_dir / step_files[step_num])
 
             if draft_path.exists():
+                get_media_storage(project_dir.parent).delete_project_paths(
+                    project_name,
+                    [draft_path.relative_to(project_dir).as_posix()],
+                )
                 draft_path.unlink()
                 return {"success": True}
             else:

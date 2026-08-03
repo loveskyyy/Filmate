@@ -78,7 +78,9 @@ async def _save_upload(file: UploadFile, asset_type: str, user_id: int, _t: Tran
 
 
 def _delete_global_asset_file(rel_path: str) -> None:
-    path = get_project_manager().projects_root / rel_path
+    projects_root = get_project_manager().projects_root
+    path = projects_root / rel_path
+    get_media_storage(projects_root).delete_global_paths([rel_path])
     try:
         path.unlink()
     except FileNotFoundError:

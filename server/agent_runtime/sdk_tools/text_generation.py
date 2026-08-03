@@ -26,6 +26,7 @@ from lib.episode_paths import (
     episode_drafts_dir,
 )
 from lib.json_io import atomic_write_json
+from lib.media_storage import get_media_storage
 from lib.project_manager import DEFAULT_SOURCE_KIND, effective_mode
 from lib.prompt_builders_script import build_normalize_prompt
 from lib.script_generator import ScriptGenerator
@@ -396,6 +397,10 @@ def normalize_drama_script_tool(ctx: ToolContext):
             # step1 真相源须原子写入：复用 atomic_write_json（同目录 tempfile + os.replace），
             # 避免 normalize 中断 / 并发重跑留下半写 JSON 被下游当成损坏草稿。
             atomic_write_json(step1_path, content)
+            await get_media_storage(ctx.projects_root).sync_project_paths_async(
+                project_path,
+                [step1_path.relative_to(project_path).as_posix()],
+            )
 
             scenes = raw_scenes
             return {

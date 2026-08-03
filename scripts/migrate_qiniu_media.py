@@ -1,7 +1,7 @@
-"""分批将本地项目媒体迁移到七牛 Kodo。
+"""分批将本地项目业务文件迁移到七牛 Kodo。
 
 默认仅输出 dry-run 报告。传入 ``--apply`` 才会上传；``--delete-local`` 还需
-显式与 ``--apply`` 联用，并且仅在单个文件上传校验成功后删除本地副本。
+显式与 ``--apply`` 联用，并且仅在媒体文件上传校验成功后删除本地缓存。
 """
 
 from __future__ import annotations
@@ -15,12 +15,12 @@ from lib.app_data_dir import app_data_dir
 from lib.media_storage import MediaStorageError, get_media_storage
 
 
-def _iter_project_media(project_path: Path, storage) -> list[str]:
+def _iter_project_files(project_path: Path, storage) -> list[str]:
     paths: list[str] = []
     for path in sorted(project_path.rglob("*")):
         if path.is_file():
             relative = path.relative_to(project_path).as_posix()
-            if storage.is_media_relative_path(relative):
+            if storage.is_project_relative_path(relative):
                 paths.append(relative)
     return paths
 
@@ -38,45 +38,63 @@ def _iter_global_media(data_root: Path, storage) -> list[str]:
     return paths
 
 
-def _load_checkpoint(path: Path) -> set[str]:
+def _load_checkpoint(path: Path) -> dict[str, str]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, OSError, json.JSONDecodeError):
-        return set()
+        return {}
     completed = payload.get("completed") if isinstance(payload, dict) else None
-    return {item for item in completed if isinstance(item, str)} if isinstance(completed, list) else set()
+    if isinstance(completed, dict):
+        return {path: value for path, value in completed.items() if isinstance(path, str) and isinstance(value, str)}
+    if isinstance(completed, list):
+        return {item: "" for item in completed if isinstance(item, str)}
+    return {}
 
 
-def _save_checkpoint(path: Path, completed: set[str]) -> None:
+def _save_checkpoint(path: Path, completed: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(".tmp")
-    temp.write_text(json.dumps({"completed": sorted(completed)}, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp.write_text(
+        json.dumps({"completed": dict(sorted(completed.items()))}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     temp.replace(path)
+
+
+def _file_etag(path: Path) -> str:
+    from qiniu import etag
+
+    return str(etag(str(path)))
 
 
 def _migrate_project(
     project_path: Path, *, storage, apply: bool, delete_local: bool, checkpoint_dir: Path
 ) -> dict[str, int | str]:
-    media_paths = _iter_project_media(project_path, storage)
+    storage.project_object_key(project_path.name, "project.json")
+    project_paths = _iter_project_files(project_path, storage)
     checkpoint = checkpoint_dir / f"{project_path.name}.json"
     completed = _load_checkpoint(checkpoint)
     uploaded = 0
     skipped = 0
-    for relative in media_paths:
-        if relative in completed:
-            skipped += 1
-            continue
+    for relative in project_paths:
         if not apply:
             continue
-        storage.sync_project_paths(project_path, [relative])
-        completed.add(relative)
+        local_hash = _file_etag(project_path / relative)
+        remote_info = (
+            storage.project_file_info(project_path.name, relative) if completed.get(relative) == local_hash else None
+        )
+        if remote_info is not None and remote_info.get("hash") == local_hash:
+            skipped += 1
+            continue
+        storage.sync_project_paths(project_path, [relative], preserve_local_on_failure=True)
+        completed[relative] = local_hash
         _save_checkpoint(checkpoint, completed)
         uploaded += 1
-        if delete_local:
+        if delete_local and storage.is_media_relative_path(relative):
             (project_path / relative).unlink(missing_ok=True)
     return {
         "project": project_path.name,
-        "discovered": len(media_paths),
+        "discovered": len(project_paths),
         "uploaded": uploaded,
         "checkpointed": skipped,
     }
@@ -96,13 +114,15 @@ def _migrate_global_assets(
     uploaded = 0
     skipped = 0
     for relative in media_paths:
-        if relative in completed:
-            skipped += 1
-            continue
         if not apply:
             continue
+        local_hash = _file_etag(data_root / relative)
+        remote_info = storage.global_file_info(relative) if completed.get(relative) == local_hash else None
+        if remote_info is not None and remote_info.get("hash") == local_hash:
+            skipped += 1
+            continue
         storage.sync_global_paths([relative])
-        completed.add(relative)
+        completed[relative] = local_hash
         _save_checkpoint(checkpoint, completed)
         uploaded += 1
         if delete_local:
@@ -116,10 +136,10 @@ def _migrate_global_assets(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="迁移 ArcReel 项目媒体到七牛 Kodo")
+    parser = argparse.ArgumentParser(description="迁移 ArcReel 项目业务文件到七牛 Kodo")
     parser.add_argument("--project", action="append", dest="projects", help="仅迁移指定项目，可重复传入")
     parser.add_argument("--apply", action="store_true", help="执行上传；未传时仅 dry-run")
-    parser.add_argument("--delete-local", action="store_true", help="上传校验成功后删除本地媒体缓存")
+    parser.add_argument("--delete-local", action="store_true", help="上传校验成功后仅删除本地媒体缓存")
     args = parser.parse_args()
     if args.delete_local and not args.apply:
         parser.error("--delete-local 必须与 --apply 一起使用")
@@ -132,7 +152,10 @@ def main() -> int:
     project_names = args.projects or [
         child.name
         for child in data_root.iterdir()
-        if child.is_dir() and not child.name.startswith("_") and not child.name.startswith(".")
+        if child.is_dir()
+        and not child.name.startswith("_")
+        and not child.name.startswith(".")
+        and (child / "project.json").is_file()
     ]
     checkpoint_dir = data_root / ".qiniu-migrations"
     reports = []
@@ -166,6 +189,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (MediaStorageError, FileNotFoundError) as exc:
+    except (MediaStorageError, FileNotFoundError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(2) from exc

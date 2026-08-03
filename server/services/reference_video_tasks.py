@@ -493,6 +493,10 @@ async def _finalize_reference_video_unit(
     if await extract_video_thumbnail(output_path, thumb_path):
         thumb_rel: str | None = f"reference_videos/thumbnails/{resource_id}.jpg"
     else:
+        await get_media_storage().delete_project_paths_async(
+            project_name,
+            [f"reference_videos/thumbnails/{resource_id}.jpg"],
+        )
         thumb_path.unlink(missing_ok=True)
         thumb_rel = None
 

@@ -18,6 +18,7 @@ from pydantic import BaseModel, ValidationError
 
 from lib import script_review
 from lib.json_io import atomic_write_json, load_json_or_none
+from lib.media_storage import get_media_storage
 from lib.project_manager import ProjectManager
 from lib.script_models import DramaNormalizedScript, NarrationStep1Draft
 
@@ -95,6 +96,10 @@ class ScriptReviewService:
             raise ScriptReviewError("invalid_content", str(exc)) from exc
         path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(path, validated)
+        get_media_storage(project_path.parent).sync_project_paths(
+            project_path,
+            [path.relative_to(project_path).as_posix()],
+        )
         return self.get_state(project_name, episode)
 
     def confirm(self, project_name: str, episode: int) -> dict[str, Any]:

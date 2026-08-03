@@ -1,7 +1,7 @@
-"""七牛云 Kodo 媒体存储。
+"""七牛云 Kodo 项目存储。
 
-项目元数据继续保存项目内相对路径。本模块只负责把受管媒体映射到确定性的
-Kodo object key，并在本地路径缺失时物化一个可供现有 ffmpeg/导出代码使用的缓存。
+项目文件始终使用项目内相对路径。七牛启用时，项目持久化文件映射到确定性的
+Kodo object key；本地目录是供现有同步代码、ffmpeg 和导出流程使用的工作副本。
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -51,15 +52,18 @@ _MEDIA_SUFFIXES = frozenset(
         ".webp",
     }
 )
-_EXCLUDED_PARTS = frozenset({".claude", "drafts", "scripts", "source"})
 _CACHE_INDEX_NAME = ".media-cache-index.json"
 _BATCH_DELETE_MAX_KEYS = 1000
+_PROJECT_RUNTIME_FILES = frozenset({"CLAUDE.md"})
+_PROJECT_RUNTIME_PARTS = frozenset({"__MACOSX"})
+_PROJECT_RUNTIME_SUFFIXES = frozenset({".bak", ".lock", ".part", ".temp", ".tmp"})
+_PROJECT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9-]+$")
 _LOCKS: dict[str, threading.Lock] = {}
 _LOCKS_GUARD = threading.Lock()
 
 
 class MediaStorageError(RuntimeError):
-    """云端媒体上传或物化失败。"""
+    """云端项目文件上传、物化或删除失败。"""
 
 
 class MediaStorageConfigurationError(MediaStorageError):
@@ -123,7 +127,7 @@ class MediaStorageConfig:
             if not value
         ]
         if missing:
-            raise MediaStorageConfigurationError(f"启用七牛媒体存储时必须设置: {', '.join(missing)}")
+            raise MediaStorageConfigurationError(f"启用七牛项目存储时必须设置: {', '.join(missing)}")
         if not config.object_prefix:
             raise MediaStorageConfigurationError("QINIU_OBJECT_PREFIX 不能为空")
         try:
@@ -152,9 +156,9 @@ class MediaStorage:
         raw = str(relative_path).replace("\\", "/").strip()
         path = PurePosixPath(raw)
         if not raw or path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
-            raise ValueError(f"非法媒体相对路径: {relative_path}")
+            raise ValueError(f"非法项目相对路径: {relative_path}")
         if ":" in path.parts[0]:
-            raise ValueError(f"非法媒体相对路径: {relative_path}")
+            raise ValueError(f"非法项目相对路径: {relative_path}")
         return path.as_posix()
 
     @staticmethod
@@ -164,7 +168,21 @@ class MediaStorage:
         except ValueError:
             return False
         path = PurePosixPath(normalized)
-        return not any(part in _EXCLUDED_PARTS for part in path.parts) and path.suffix.lower() in _MEDIA_SUFFIXES
+        return MediaStorage.is_project_relative_path(normalized) and path.suffix.lower() in _MEDIA_SUFFIXES
+
+    @staticmethod
+    def is_project_relative_path(relative_path: str | Path) -> bool:
+        """判断项目内路径是否属于应持久化到对象存储的业务文件。"""
+        try:
+            normalized = MediaStorage._normalize_relative(relative_path)
+        except ValueError:
+            return False
+        path = PurePosixPath(normalized)
+        if any(part.startswith(".") or part in _PROJECT_RUNTIME_PARTS for part in path.parts):
+            return False
+        if path.name in _PROJECT_RUNTIME_FILES or path.suffix.lower() in _PROJECT_RUNTIME_SUFFIXES:
+            return False
+        return not path.name.startswith("project.json.bak.")
 
     def _resolve_under(self, root: Path, relative_path: str | Path) -> tuple[Path, str]:
         normalized = self._normalize_relative(relative_path)
@@ -175,7 +193,7 @@ class MediaStorage:
         try:
             candidate.relative_to(resolved_root)
         except ValueError as exc:
-            raise ValueError(f"媒体路径越界: {relative_path}") from exc
+            raise ValueError(f"项目路径越界: {relative_path}") from exc
         return candidate, normalized
 
     def _object_key(self, *parts: str) -> str:
@@ -184,15 +202,15 @@ class MediaStorage:
     @staticmethod
     def _normalize_project_name(project_name: str) -> str:
         normalized = MediaStorage._normalize_relative(project_name)
-        if len(PurePosixPath(normalized).parts) != 1:
+        if len(PurePosixPath(normalized).parts) != 1 or not _PROJECT_NAME_PATTERN.fullmatch(normalized):
             raise ValueError(f"非法项目名称: {project_name}")
         return normalized
 
     def project_object_key(self, project_name: str, relative_path: str | Path) -> str:
         project_name = self._normalize_project_name(project_name)
         normalized = self._normalize_relative(relative_path)
-        if not self.is_media_relative_path(normalized):
-            raise ValueError(f"不是受管媒体路径: {relative_path}")
+        if not self.is_project_relative_path(normalized):
+            raise ValueError(f"不是受管项目路径: {relative_path}")
         return self._object_key(project_name, normalized)
 
     def global_object_key(self, relative_path: str | Path) -> str:
@@ -252,9 +270,9 @@ class MediaStorage:
             bucket_name=self.config.bucket,
         )
         if not result or getattr(info, "status_code", 0) != 200:
-            raise MediaStorageError("七牛媒体上传失败")
+            raise MediaStorageError("七牛项目文件上传失败")
         if result.get("key") != object_key or result.get("hash") != etag(str(source_path)):
-            raise MediaStorageError("七牛媒体上传校验失败")
+            raise MediaStorageError("七牛项目文件上传校验失败")
 
     def sync_project_paths(
         self,
@@ -262,6 +280,7 @@ class MediaStorage:
         relative_paths: Iterable[str | Path],
         *,
         object_project_name: str | None = None,
+        preserve_local_on_failure: bool = False,
     ) -> None:
         if not self.enabled:
             return
@@ -270,14 +289,98 @@ class MediaStorage:
         synced_paths: list[Path] = []
         for relative_path in relative_paths:
             source_path, normalized = self._resolve_under(project_path, relative_path)
-            if not self.is_media_relative_path(normalized):
+            if not self.is_project_relative_path(normalized):
                 continue
             if not source_path.is_file():
                 raise FileNotFoundError(source_path)
-            self._upload_file(source_path, self.project_object_key(object_project_name, normalized))
-            synced_paths.append(source_path)
+            object_key = self.project_object_key(object_project_name, normalized)
+            try:
+                self._upload_file(source_path, object_key)
+            except Exception as upload_exc:
+                if preserve_local_on_failure:
+                    raise
+                rollback_exc: Exception | None = None
+                try:
+                    remote_info = self.project_file_info(object_project_name, normalized)
+                    if remote_info is None:
+                        source_path.unlink(missing_ok=True)
+                    else:
+                        self._materialize(
+                            source_path,
+                            object_key,
+                            track_cache=self.is_media_relative_path(normalized),
+                            force=True,
+                        )
+                except Exception as exc:
+                    rollback_exc = exc
+                if rollback_exc is not None:
+                    upload_exc.add_note(f"本地工作副本回滚失败: {type(rollback_exc).__name__}")
+                raise upload_exc
+            if self.is_media_relative_path(normalized):
+                synced_paths.append(source_path)
         self._record_cache_entries(synced_paths)
         self.evict_local_cache()
+
+    def sync_project_files(
+        self,
+        project_path: Path,
+        *,
+        object_project_name: str | None = None,
+        preserve_local_on_failure: bool = False,
+    ) -> None:
+        """上传项目目录内全部持久化业务文件，可用于导入或迁移。"""
+        if not self.enabled:
+            return
+        project_path = Path(project_path).resolve()
+        relative_paths = [
+            path.relative_to(project_path).as_posix()
+            for path in sorted(project_path.rglob("*"))
+            if path.is_file() and self.is_project_relative_path(path.relative_to(project_path).as_posix())
+        ]
+        self.sync_project_paths(
+            project_path,
+            relative_paths,
+            object_project_name=object_project_name,
+            preserve_local_on_failure=preserve_local_on_failure,
+        )
+
+    def snapshot_project_files(self, project_path: Path) -> dict[str, tuple[int, int]]:
+        """记录项目业务文件签名，供 Agent 等直接文件写入链路做回合后对账。"""
+        project_path = Path(project_path).resolve()
+        snapshot: dict[str, tuple[int, int]] = {}
+        for path in sorted(project_path.rglob("*")):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(project_path).as_posix()
+            if not self.is_project_relative_path(relative):
+                continue
+            stat = path.stat()
+            snapshot[relative] = (stat.st_size, stat.st_mtime_ns)
+        return snapshot
+
+    def reconcile_project_files(self, project_path: Path, before: dict[str, tuple[int, int]]) -> None:
+        """同步快照后新增/修改文件，并删除快照后消失的远端对象。"""
+        if not self.enabled:
+            return
+        project_path = Path(project_path).resolve()
+        after = self.snapshot_project_files(project_path)
+        changed = [path for path, signature in after.items() if before.get(path) != signature]
+        removed = [path for path in before if path not in after]
+        if changed:
+            self.sync_project_paths(project_path, changed)
+        if removed:
+            try:
+                self.delete_project_paths(project_path.name, removed)
+            except Exception as delete_exc:
+                rollback_errors: list[str] = []
+                for relative_path in removed:
+                    try:
+                        self.materialize_project_file(project_path, relative_path, force=True)
+                    except Exception as exc:
+                        rollback_errors.append(f"{relative_path}: {type(exc).__name__}")
+                if rollback_errors:
+                    delete_exc.add_note("本地删除回滚失败: " + ", ".join(rollback_errors))
+                raise
 
     def sync_project_media(self, project_path: Path, *, object_project_name: str | None = None) -> None:
         """上传项目目录内全部受管媒体，可用于尚未安装的导入暂存目录。"""
@@ -313,19 +416,37 @@ class MediaStorage:
     async def sync_project_paths_async(self, project_path: Path, relative_paths: Iterable[str | Path]) -> None:
         await asyncio.to_thread(self.sync_project_paths, project_path, list(relative_paths))
 
+    async def delete_project_paths_async(
+        self,
+        project_name: str,
+        relative_paths: Iterable[str | Path],
+    ) -> None:
+        await asyncio.to_thread(self.delete_project_paths, project_name, list(relative_paths))
+
     async def sync_global_paths_async(self, relative_paths: Iterable[str | Path]) -> None:
         await asyncio.to_thread(self.sync_global_paths, list(relative_paths))
 
-    def materialize_project_file(self, project_path: Path, relative_path: str | Path) -> Path:
+    def materialize_project_file(
+        self,
+        project_path: Path,
+        relative_path: str | Path,
+        *,
+        force: bool = False,
+    ) -> Path:
         project_path = Path(project_path).resolve()
         target_path, normalized = self._resolve_under(project_path, relative_path)
-        if target_path.is_file():
+        if target_path.is_file() and not force:
             if self.enabled and self.is_media_relative_path(normalized):
                 self._record_cache_entries([target_path])
             return target_path
-        if not self.enabled or not self.is_media_relative_path(normalized):
+        if not self.enabled or not self.is_project_relative_path(normalized):
             return target_path
-        self._materialize(target_path, self.project_object_key(project_path.name, normalized))
+        self._materialize(
+            target_path,
+            self.project_object_key(project_path.name, normalized),
+            track_cache=self.is_media_relative_path(normalized),
+            force=force,
+        )
         return target_path
 
     def materialize_global_file(self, relative_path: str | Path) -> Path:
@@ -338,10 +459,10 @@ class MediaStorage:
             return target_path
         if not self.is_media_relative_path(normalized):
             return target_path
-        self._materialize(target_path, self.global_object_key(normalized))
+        self._materialize(target_path, self.global_object_key(normalized), track_cache=True)
         return target_path
 
-    def _materialize(self, target_path: Path, object_key: str) -> None:
+    def _materialize(self, target_path: Path, object_key: str, *, track_cache: bool, force: bool = False) -> None:
         key = str(target_path)
         with _LOCKS_GUARD:
             lock = _LOCKS.setdefault(key, threading.Lock())
@@ -350,7 +471,7 @@ class MediaStorage:
             lock_path.parent.mkdir(parents=True, exist_ok=True)
             try:
                 with portalocker.Lock(lock_path, timeout=60):
-                    if target_path.is_file():
+                    if target_path.is_file() and not force:
                         return
                     target_path.parent.mkdir(parents=True, exist_ok=True)
                     temp_path: Path | None = None
@@ -360,17 +481,18 @@ class MediaStorage:
                             with urlopen(self.signed_url_for_key(object_key), timeout=30) as response:
                                 shutil.copyfileobj(response, temp_file)
                         if not temp_path.stat().st_size:
-                            raise MediaStorageError("七牛媒体下载结果为空")
+                            raise MediaStorageError("七牛项目文件下载结果为空")
                         temp_path.replace(target_path)
-                        self._record_cache_entries([target_path])
-                        self.evict_local_cache(exclude={target_path})
+                        if track_cache:
+                            self._record_cache_entries([target_path])
+                            self.evict_local_cache(exclude={target_path})
                     finally:
                         if temp_path is not None:
                             temp_path.unlink(missing_ok=True)
             except MediaStorageError:
                 raise
             except Exception as exc:
-                raise MediaStorageError("七牛媒体下载失败") from exc
+                raise MediaStorageError("七牛项目文件下载失败") from exc
 
     def _list_object_keys(self, prefix: str) -> list[str]:
         """列举前缀下的对象；失败时不将不完整项目伪装成可导出。"""
@@ -383,10 +505,10 @@ class MediaStorage:
             while True:
                 result, eof, info = manager.list(self.config.bucket, prefix, marker, 1000, None)
                 if getattr(info, "status_code", 0) != 200 or not isinstance(result, dict):
-                    raise MediaStorageError("七牛媒体列表读取失败")
+                    raise MediaStorageError("七牛项目文件列表读取失败")
                 items = result.get("items", [])
                 if not isinstance(items, list):
-                    raise MediaStorageError("七牛媒体列表响应无效")
+                    raise MediaStorageError("七牛项目文件列表响应无效")
                 keys.extend(
                     item["key"] for item in items if isinstance(item, dict) and isinstance(item.get("key"), str)
                 )
@@ -394,46 +516,174 @@ class MediaStorage:
                     return keys
                 marker = result.get("marker")
                 if not isinstance(marker, str) or not marker:
-                    raise MediaStorageError("七牛媒体列表响应缺少分页标记")
+                    raise MediaStorageError("七牛项目文件列表响应缺少分页标记")
         except MediaStorageError:
             raise
         except Exception as exc:
-            raise MediaStorageError("七牛媒体列表读取失败") from exc
+            raise MediaStorageError("七牛项目文件列表读取失败") from exc
 
-    def delete_project_media(self, project_name: str) -> None:
-        """删除项目对应的全部云端对象；任一批失败时保留本地项目供重试。"""
+    def _list_common_prefixes(self, prefix: str) -> list[str]:
+        """列举一级公共前缀，用于在无本地工作副本时发现远端项目。"""
+        from qiniu import BucketManager
+
+        manager = BucketManager(self._qiniu_auth())
+        marker: str | None = None
+        prefixes: list[str] = []
+        try:
+            while True:
+                result, eof, info = manager.list(self.config.bucket, prefix, marker, 1000, "/")
+                if getattr(info, "status_code", 0) != 200 or not isinstance(result, dict):
+                    raise MediaStorageError("七牛项目列表读取失败")
+                common_prefixes = result.get("commonPrefixes", [])
+                if not isinstance(common_prefixes, list):
+                    raise MediaStorageError("七牛项目列表响应无效")
+                prefixes.extend(item for item in common_prefixes if isinstance(item, str))
+                if eof:
+                    return prefixes
+                marker = result.get("marker")
+                if not isinstance(marker, str) or not marker:
+                    raise MediaStorageError("七牛项目列表响应缺少分页标记")
+        except MediaStorageError:
+            raise
+        except Exception as exc:
+            raise MediaStorageError("七牛项目列表读取失败") from exc
+
+    def _object_info(self, object_key: str) -> dict[str, Any] | None:
+        """读取对象元数据；不存在返回 None，认证或网络错误显式失败。"""
         if not self.enabled:
+            return None
+
+        from qiniu import BucketManager
+
+        try:
+            response: Any = BucketManager(self._qiniu_auth()).stat(self.config.bucket, object_key)
+        except Exception as exc:
+            raise MediaStorageError("七牛项目文件状态读取失败") from exc
+        if not isinstance(response, tuple) or len(response) != 2:
+            raise MediaStorageError("七牛项目文件状态读取失败")
+        result, info = response
+        status_code = getattr(info, "status_code", 0)
+        if status_code == 200 and isinstance(result, dict):
+            return result
+        if status_code in {404, 612}:
+            return None
+        raise MediaStorageError("七牛项目文件状态读取失败")
+
+    def project_file_info(self, project_name: str, relative_path: str | Path) -> dict[str, Any] | None:
+        """读取项目对象元数据；不存在返回 None，认证或网络错误显式失败。"""
+        return self._object_info(self.project_object_key(project_name, relative_path))
+
+    def global_file_info(self, relative_path: str | Path) -> dict[str, Any] | None:
+        """读取全局资产对象元数据；不存在返回 None，认证或网络错误显式失败。"""
+        return self._object_info(self.global_object_key(relative_path))
+
+    def project_file_exists(self, project_name: str, relative_path: str | Path) -> bool:
+        """检查项目对象是否存在；认证或网络错误必须显式失败。"""
+        return self.project_file_info(project_name, relative_path) is not None
+
+    def list_project_names(self) -> list[str]:
+        """列出包含 project.json 的远端项目名称。"""
+        if not self.enabled:
+            return []
+        root_prefix = f"{self.config.object_prefix}/"
+        names: list[str] = []
+        for common_prefix in self._list_common_prefixes(root_prefix):
+            if not common_prefix.startswith(root_prefix):
+                continue
+            relative = common_prefix.removeprefix(root_prefix).strip("/")
+            try:
+                name = self._normalize_project_name(relative)
+            except ValueError:
+                continue
+            if name.startswith("_"):
+                continue
+            if self.project_file_exists(name, "project.json"):
+                names.append(name)
+        return sorted(dict.fromkeys(names))
+
+    def materialize_project_data(self, project_path: Path) -> None:
+        """物化并对账项目非媒体业务文件；媒体仍由具体处理链按需下载。"""
+        project_path = Path(project_path).resolve()
+        if not self.enabled:
+            return
+        project_name = self._normalize_project_name(project_path.name)
+        prefix = f"{self._object_key(project_name)}/"
+        for object_key in self._list_object_keys(prefix):
+            if not object_key.startswith(prefix):
+                continue
+            relative_path = object_key.removeprefix(prefix)
+            if self.is_project_relative_path(relative_path) and not self.is_media_relative_path(relative_path):
+                target_path, _ = self._resolve_under(project_path, relative_path)
+                force = False
+                if target_path.is_file():
+                    remote_info = self.project_file_info(project_name, relative_path)
+                    remote_hash = remote_info.get("hash") if remote_info is not None else None
+                    if not isinstance(remote_hash, str) or not remote_hash:
+                        force = True
+                    else:
+                        from qiniu import etag
+
+                        force = etag(str(target_path)) != remote_hash
+                self.materialize_project_file(project_path, relative_path, force=force)
+
+    def _delete_object_keys(self, object_keys: list[str]) -> None:
+        if not object_keys:
             return
 
         from qiniu import BucketManager, build_batch_delete
-
-        normalized_name = self._normalize_project_name(project_name)
-        prefix = f"{self._object_key(normalized_name)}/"
-        object_keys = self._list_object_keys(prefix)
-        if not object_keys:
-            return
 
         manager = BucketManager(self._qiniu_auth())
         try:
             for start in range(0, len(object_keys), _BATCH_DELETE_MAX_KEYS):
                 object_keys_batch = object_keys[start : start + _BATCH_DELETE_MAX_KEYS]
-                # qiniu 未为 BucketManager.batch 标注返回类型；运行时仍对响应形状严格校验。
                 batch_response: Any = manager.batch(build_batch_delete(self.config.bucket, object_keys_batch))
                 if not isinstance(batch_response, tuple) or len(batch_response) != 2:
-                    raise MediaStorageError("七牛项目媒体删除失败")
+                    raise MediaStorageError("七牛项目文件删除失败")
                 result, info = batch_response
                 if getattr(info, "status_code", 0) != 200 or not isinstance(result, list):
-                    raise MediaStorageError("七牛项目媒体删除失败")
+                    raise MediaStorageError("七牛项目文件删除失败")
                 if len(result) != len(object_keys_batch):
-                    raise MediaStorageError("七牛项目媒体删除响应无效")
-                # 612 表示对象已不存在；并发重复删除时目标状态已经达成，可以安全继续。
+                    raise MediaStorageError("七牛项目文件删除响应无效")
                 for item in result:
                     if not isinstance(item, dict) or item.get("code") not in {200, 612}:
-                        raise MediaStorageError("七牛项目媒体删除失败")
+                        raise MediaStorageError("七牛项目文件删除失败")
         except MediaStorageError:
             raise
         except Exception as exc:
-            raise MediaStorageError("七牛项目媒体删除失败") from exc
+            raise MediaStorageError("七牛项目文件删除失败") from exc
+
+    def delete_project_paths(self, project_name: str, relative_paths: Iterable[str | Path]) -> None:
+        """精确删除项目对象；调用方应仅在成功后删除本地工作副本。"""
+        if not self.enabled:
+            return
+        normalized_name = self._normalize_project_name(project_name)
+        object_keys: list[str] = []
+        for relative_path in relative_paths:
+            normalized = self._normalize_relative(relative_path)
+            if not self.is_project_relative_path(normalized):
+                raise ValueError(f"不是受管项目路径: {relative_path}")
+            object_keys.append(self.project_object_key(normalized_name, normalized))
+        self._delete_object_keys(list(dict.fromkeys(object_keys)))
+
+    def delete_global_paths(self, relative_paths: Iterable[str | Path]) -> None:
+        """精确删除全局资产对象；调用方应仅在成功后删除本地副本。"""
+        if not self.enabled:
+            return
+        object_keys = [self.global_object_key(relative_path) for relative_path in relative_paths]
+        self._delete_object_keys(list(dict.fromkeys(object_keys)))
+
+    def delete_project_media(self, project_name: str) -> None:
+        """兼容旧名称：删除项目对应的全部云端对象。"""
+        if not self.enabled:
+            return
+
+        normalized_name = self._normalize_project_name(project_name)
+        prefix = f"{self._object_key(normalized_name)}/"
+        self._delete_object_keys(self._list_object_keys(prefix))
+
+    def delete_project(self, project_name: str) -> None:
+        """删除项目对应的全部云端对象；任一批失败时调用方必须保留本地项目。"""
+        self.delete_project_media(project_name)
 
     def materialize_project_media(self, project_path: Path) -> None:
         """将项目中缺失的受管媒体从云端物化，供导出等全量文件操作使用。"""
