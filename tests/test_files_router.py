@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from lib.project_manager import ProjectManager
-from server.auth import CurrentUserInfo, get_current_user
+from server.auth import CurrentUserInfo, get_current_user, get_current_user_flexible
 from server.routers import files
 
 
@@ -53,6 +53,7 @@ def _client(monkeypatch, tmp_path):
 
     app = FastAPI()
     app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user_flexible] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(files.router, prefix="/api/v1")
     return TestClient(app), pm
 
@@ -896,6 +897,7 @@ def _client_with_pm_raising(monkeypatch, sentinel: str):
 
     app = FastAPI()
     app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user_flexible] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
     app.include_router(files.router, prefix="/api/v1")
     return TestClient(app)
 

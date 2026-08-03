@@ -1032,11 +1032,23 @@ class API {
     cacheBust?: number | string | null
   ): string {
     const base = `${API_BASE}/files/${encodeURIComponent(projectName)}/${path}`;
-    if (cacheBust == null || cacheBust === "") {
-      return base;
-    }
+    const params = new URLSearchParams();
+    const token = getToken();
+    if (token) params.set("token", token);
+    if (cacheBust != null && cacheBust !== "") params.set("v", String(cacheBust));
+    const query = params.toString();
+    return query ? `${base}?${query}` : base;
+  }
 
-    return `${base}?v=${encodeURIComponent(String(cacheBust))}`;
+  /** 为浏览器原生加载的后端媒体 URL 附加当前登录凭证。 */
+  static getAuthenticatedMediaUrl(url: string): string {
+    const token = getToken();
+    if (!token) return url;
+
+    const parsed = new URL(url, window.location.origin);
+    parsed.searchParams.set("token", token);
+    if (/^https?:\/\//i.test(url)) return parsed.toString();
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
   }
 
   // ==================== Source 文件管理 ====================
@@ -2182,10 +2194,13 @@ class API {
     if (!path) return null;
     const parts = path.split("/");
     if (parts.length < 3 || parts[0] !== "_global_assets") return null;
-    const type = parts[1];
-    const filename = parts.slice(2).join("/");
-    const qs = fp ? `?fp=${encodeURIComponent(fp)}` : "";
-    return `${API_BASE}/global-assets/${type}/${filename}${qs}`;
+    const routeParts = parts.slice(1);
+    const params = new URLSearchParams();
+    const token = getToken();
+    if (token) params.set("token", token);
+    if (fp) params.set("fp", fp);
+    const query = params.toString();
+    return `${API_BASE}/global-assets/${routeParts.join("/")}${query ? `?${query}` : ""}`;
   }
 
   // ==================== Reference-to-Video API ====================

@@ -406,7 +406,8 @@ class TaskRepository(BaseRepository):
         以避免吓人：running / cancelling 下游运行期数量不稳定，由 cancel 操作实际触发后再
         通过 SSE 反映。终态 task 调用方应在前端避免触发。
         """
-        result = await self.session.execute(select(Task).where(Task.task_id == task_id))
+        stmt = self._scope_query(select(Task).where(Task.task_id == task_id), Task)
+        result = await self.session.execute(stmt)
         task = result.scalar_one_or_none()
         if not task:
             raise ValueError(f"任务 '{task_id}' 不存在")
@@ -423,7 +424,7 @@ class TaskRepository(BaseRepository):
 
     async def _collect_queued_dependents(self, task_id: str) -> list[dict[str, Any]]:
         """递归收集依赖于 task_id 的所有 queued 任务摘要。"""
-        result = await self.session.execute(
+        stmt = (
             select(Task.task_id, Task.task_type, Task.resource_id)
             .where(
                 Task.dependency_task_id == task_id,
@@ -431,6 +432,8 @@ class TaskRepository(BaseRepository):
             )
             .order_by(Task.queued_at.asc())
         )
+        stmt = self._scope_query(stmt, Task)
+        result = await self.session.execute(stmt)
         dependents = []
         for row in result.all():
             summary = {"task_id": row[0], "task_type": row[1], "resource_id": row[2]}
@@ -452,7 +455,8 @@ class TaskRepository(BaseRepository):
         Repository 只更新 DB，不持有 worker callback。``cancelling`` 列表交由
         上层（GenerationQueue）拿到后同步分发 in-process cancel 信号。
         """
-        result = await self.session.execute(select(Task).where(Task.task_id == task_id))
+        stmt = self._scope_query(select(Task).where(Task.task_id == task_id), Task)
+        result = await self.session.execute(stmt)
         task = result.scalar_one_or_none()
         if not task:
             raise ValueError(f"任务 '{task_id}' 不存在")
@@ -731,16 +735,17 @@ class TaskRepository(BaseRepository):
 
     async def get_cancel_all_preview(self, project_name: str) -> int:
         """返回项目中当前 queued 状态的任务数量。"""
-        result = await self.session.execute(
-            select(func.count()).select_from(Task).where(Task.project_name == project_name, Task.status == "queued")
-        )
+        stmt = select(func.count()).select_from(Task).where(Task.project_name == project_name, Task.status == "queued")
+        stmt = self._scope_query(stmt, Task)
+        result = await self.session.execute(stmt)
         return result.scalar_one()
 
     async def cancel_all_queued(self, project_name: str) -> dict[str, Any]:
         """取消项目中所有 queued 任务。"""
-        queued_result = await self.session.execute(
-            select(Task).where(Task.project_name == project_name, Task.status == "queued")
+        queued_stmt = self._scope_query(
+            select(Task).where(Task.project_name == project_name, Task.status == "queued"), Task
         )
+        queued_result = await self.session.execute(queued_stmt)
         queued_tasks = list(queued_result.scalars().all())
 
         now = utc_now()
@@ -754,15 +759,18 @@ class TaskRepository(BaseRepository):
                 updated_at=now,
             )
         )
+        if self.user_id is not None:
+            stmt = stmt.where(Task.user_id == self.user_id)
         result = await self.session.execute(stmt)
         cancelled_count = rowcount(result)
 
         if queued_tasks:
             await self.session.flush()
             task_ids = [t.task_id for t in queued_tasks]
-            refreshed = await self.session.execute(
-                select(Task).where(Task.task_id.in_(task_ids), Task.status == "cancelled")
+            refreshed_stmt = self._scope_query(
+                select(Task).where(Task.task_id.in_(task_ids), Task.status == "cancelled"), Task
             )
+            refreshed = await self.session.execute(refreshed_stmt)
             for updated_task in refreshed.scalars().all():
                 task_data = _task_to_dict(updated_task)
                 await self._append_event(
@@ -930,7 +938,6 @@ class TaskRepository(BaseRepository):
         result = await self.session.execute(stmt)
         return [_task_to_dict(t) for t in result.scalars().all()]
 
-    # NOTE: In multi-user mode, override this method to filter by user via JOIN Task
     async def get_events_since(
         self,
         *,
@@ -940,6 +947,8 @@ class TaskRepository(BaseRepository):
     ) -> list[dict[str, Any]]:
         limit = max(1, min(1000, limit))
         stmt = select(TaskEvent).where(TaskEvent.id > last_event_id)
+        if self.user_id is not None:
+            stmt = stmt.join(Task, Task.task_id == TaskEvent.task_id).where(Task.user_id == self.user_id)
         if project_name:
             stmt = stmt.where(TaskEvent.project_name == project_name)
         stmt = stmt.order_by(TaskEvent.id.asc()).limit(limit)
@@ -947,9 +956,10 @@ class TaskRepository(BaseRepository):
         result = await self.session.execute(stmt)
         return [_event_to_dict(e) for e in result.scalars().all()]
 
-    # NOTE: In multi-user mode, override this method to filter by user via JOIN Task
     async def get_latest_event_id(self, *, project_name: str | None = None) -> int:
         stmt = select(func.max(TaskEvent.id))
+        if self.user_id is not None:
+            stmt = stmt.join(Task, Task.task_id == TaskEvent.task_id).where(Task.user_id == self.user_id)
         if project_name:
             stmt = stmt.where(TaskEvent.project_name == project_name)
         result = await self.session.execute(stmt)

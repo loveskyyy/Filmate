@@ -14,16 +14,17 @@ import time
 from collections import OrderedDict
 from datetime import UTC
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 
 import jwt
-from fastapi import Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Query, Request
 from fastapi.security import OAuth2PasswordBearer
 from pwdlib import PasswordHash
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lib import PROJECT_ROOT
+from lib.db.base import DEFAULT_USER_ID
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +63,6 @@ def is_auth_enabled() -> bool:
 
 def _anonymous_user() -> "CurrentUserInfo":
     """关闭认证时返回的固定匿名用户。"""
-    from lib.db.base import DEFAULT_USER_ID
-
     return CurrentUserInfo(id=DEFAULT_USER_ID, sub=_ANONYMOUS_USER_SUB, role="admin")
 
 
@@ -101,7 +100,7 @@ def get_token_secret() -> str:
     return _cached_token_secret
 
 
-def create_token(username: str) -> str:
+def create_token(username: str, *, user_id: int = DEFAULT_USER_ID, role: str = "admin") -> str:
     """创建 JWT token
 
     Args:
@@ -113,6 +112,8 @@ def create_token(username: str) -> str:
     now = time.time()
     payload = {
         "sub": username,
+        "uid": user_id,
+        "role": role,
         "iat": now,
         "exp": now + TOKEN_EXPIRY_SECONDS,
     }
@@ -138,11 +139,19 @@ def verify_token(token: str) -> dict | None:
 DOWNLOAD_TOKEN_EXPIRY_SECONDS = 300  # 5 分钟
 
 
-def create_download_token(username: str, project_name: str) -> str:
+def create_download_token(
+    username: str,
+    project_name: str,
+    *,
+    user_id: int = DEFAULT_USER_ID,
+    role: str = "admin",
+) -> str:
     """签发短时效下载 token，用于浏览器原生下载认证"""
     now = time.time()
     payload = {
         "sub": username,
+        "uid": user_id,
+        "role": role,
         "project": project_name,
         "purpose": "download",
         "iat": now,
@@ -165,6 +174,8 @@ def verify_download_token(token: str, project_name: str) -> dict:
     if not is_auth_enabled():
         return {
             "sub": _ANONYMOUS_USER_SUB,
+            "uid": DEFAULT_USER_ID,
+            "role": "admin",
             "project": project_name,
             "purpose": "download",
         }
@@ -185,7 +196,7 @@ def _get_password_hash() -> str:
     return _cached_password_hash
 
 
-async def check_credentials(username: str, password: str, session: AsyncSession) -> bool:
+async def check_credentials(username: str, password: str, session: AsyncSession | None) -> bool:
     """校验用户名密码（使用哈希比对）
 
     从 AUTH_USERNAME（默认 admin）和 AUTH_PASSWORD 环境变量读取。
@@ -208,6 +219,8 @@ async def check_credentials(username: str, password: str, session: AsyncSession)
         return True
 
     # 如果环境变量不匹配，尝试查询数据库用户
+    if session is None:
+        return False
     from sqlalchemy import select
 
     from lib.db.models.user import User
@@ -389,7 +402,12 @@ async def _verify_api_key(token: str) -> dict | None:
         except (ValueError, TypeError):
             logger.warning("API Key expires_at 值格式无法解析，忽略过期检查: %r", expires_at)
 
-    payload = {"sub": f"apikey:{row['name']}", "via": "apikey"}
+    payload = {
+        "sub": f"apikey:{row['name']}",
+        "uid": row["user_id"],
+        "role": "user",
+        "via": "apikey",
+    }
     _set_api_key_cache(key_hash, payload, expires_at_ts=expires_at_monotonic)
 
     # 异步更新 last_used_at（不阻塞，保存引用防止 GC）
@@ -438,14 +456,41 @@ async def _verify_and_get_payload_async(token: str) -> dict:
 
 def _payload_to_user(payload: dict) -> CurrentUserInfo:
     """Convert a verified JWT/API-key payload to CurrentUserInfo."""
-    from lib.db.base import DEFAULT_USER_ID
-
     sub = payload.get("sub", "")
-    return CurrentUserInfo(id=DEFAULT_USER_ID, sub=sub, role="admin")
+    user_id = payload.get("uid")
+    role = payload.get("role", "user")
+    if not isinstance(sub, str) or not sub:
+        raise HTTPException(status_code=401, detail="token subject 无效")
+    if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+        raise HTTPException(status_code=401, detail="token user id 无效，请重新登录")
+    if not isinstance(role, str) or not role:
+        raise HTTPException(status_code=401, detail="token role 无效")
+    return CurrentUserInfo(id=user_id, sub=sub, role=role)
+
+
+def _authorize_project_request(request: Request, user: CurrentUserInfo) -> None:
+    """对 URL 中的项目标识执行统一所有权校验。"""
+    project_name = request.path_params.get("project_name")
+    if project_name is None and request.url.path.startswith("/api/v1/projects/"):
+        project_name = request.path_params.get("name")
+    if project_name is None:
+        project_name = request.query_params.get("project_name")
+    if not isinstance(project_name, str):
+        return
+
+    from lib.app_data_dir import app_data_dir
+    from lib.i18n import get_translator
+    from lib.project_manager import ProjectManager
+
+    manager = ProjectManager(app_data_dir())
+    if not manager.is_project_owned_by(project_name, user.id):
+        _t = get_translator(request)
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
 
 
 async def get_current_user(
     token: Annotated[str | None, Depends(oauth2_scheme_optional)] = None,
+    request: Request = cast(Request, None),
 ) -> CurrentUserInfo:
     """标准认证依赖 — 支持 JWT 和 API Key Bearer token。
 
@@ -453,7 +498,10 @@ async def get_current_user(
     启用时缺 token 抛 401（与旧 oauth2_scheme auto_error 行为等价）。
     """
     if not is_auth_enabled():
-        return _anonymous_user()
+        user = _anonymous_user()
+        if request is not None:
+            _authorize_project_request(request, user)
+        return user
     if not token:
         raise HTTPException(
             status_code=401,
@@ -461,19 +509,26 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     payload = await _verify_and_get_payload_async(token)
-    return _payload_to_user(payload)
+    user = _payload_to_user(payload)
+    if request is not None:
+        _authorize_project_request(request, user)
+    return user
 
 
 async def get_current_user_flexible(
     token: Annotated[str | None, Depends(oauth2_scheme_optional)] = None,
     query_token: str | None = Query(None, alias="token"),
+    request: Request = cast(Request, None),
 ) -> CurrentUserInfo:
     """SSE 认证依赖 — 同时支持 Authorization header 和 ?token= query param。
 
     ``AUTH_ENABLED=false`` 时无视 token，直接返回匿名 admin。
     """
     if not is_auth_enabled():
-        return _anonymous_user()
+        user = _anonymous_user()
+        if request is not None:
+            _authorize_project_request(request, user)
+        return user
     raw = token or query_token
     if not raw:
         raise HTTPException(
@@ -482,7 +537,10 @@ async def get_current_user_flexible(
             headers={"WWW-Authenticate": "Bearer"},
         )
     payload = await _verify_and_get_payload_async(raw)
-    return _payload_to_user(payload)
+    user = _payload_to_user(payload)
+    if request is not None:
+        _authorize_project_request(request, user)
+    return user
 
 
 # Type aliases for FastAPI dependency injection

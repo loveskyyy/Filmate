@@ -40,7 +40,7 @@ from lib.source_loader import (
     SourceLoader,
     UnsupportedFormatError,
 )
-from server.auth import CurrentUser
+from server.auth import CurrentUser, CurrentUserFlexible
 
 router = APIRouter()
 
@@ -71,7 +71,13 @@ ALLOWED_EXTENSIONS = {
 
 
 @router.get("/files/{project_name}/{path:path}")
-async def serve_project_file(project_name: str, path: str, request: Request, _t: Translator):
+async def serve_project_file(
+    project_name: str,
+    path: str,
+    request: Request,
+    _user: CurrentUserFlexible,
+    _t: Translator,
+):
     """服务项目内的静态文件（图片/视频）"""
     try:
 
@@ -111,14 +117,45 @@ async def serve_project_file(project_name: str, path: str, request: Request, _t:
 
 
 @router.get("/global-assets/{asset_type}/{filename}")
-async def serve_global_asset(asset_type: str, filename: str, _t: Translator):
+async def serve_legacy_global_asset(
+    asset_type: str,
+    filename: str,
+    _user: CurrentUserFlexible,
+    _t: Translator,
+):
+    """服务默认用户的存量全局资产路径。"""
+    if _user.id != 1:
+        raise HTTPException(status_code=404, detail=_t("file_not_found", path=filename))
+    return await _serve_global_asset_file(None, asset_type, filename, _t)
+
+
+@router.get("/global-assets/{user_id}/{asset_type}/{filename}")
+async def serve_scoped_global_asset(
+    user_id: str,
+    asset_type: str,
+    filename: str,
+    _user: CurrentUserFlexible,
+    _t: Translator,
+):
+    """服务当前用户命名空间内的全局资产图片。"""
+    if not user_id.isdigit() or int(user_id) != _user.id:
+        raise HTTPException(status_code=404, detail=_t("file_not_found", path=filename))
+    return await _serve_global_asset_file(int(user_id), asset_type, filename, _t)
+
+
+async def _serve_global_asset_file(
+    user_id: int | None,
+    asset_type: str,
+    filename: str,
+    _t: Translator,
+):
     """服务 _global_assets 下的全局资产图片（仅全局库类型：character/scene/prop）"""
     if asset_type not in GLOBAL_LIBRARY_ASSET_TYPES:
         raise HTTPException(status_code=400, detail=_t("invalid_asset_type"))
     if "/" in filename or ".." in filename:
         raise HTTPException(status_code=400, detail=_t("invalid_asset_filename"))
 
-    root = get_project_manager().get_global_assets_root()
+    root = get_project_manager().get_global_assets_root(user_id=user_id)
     path = root / asset_type / filename
 
     # 防御性检查：即使 filename 通过了字符串校验，也要确保解析后的路径仍在 root 之内
@@ -128,7 +165,11 @@ async def serve_global_asset(asset_type: str, filename: str, _t: Translator):
     except ValueError:
         raise HTTPException(status_code=403, detail=_t("forbidden_access"))
 
-    relative_path = f"_global_assets/{asset_type}/{filename}"
+    relative_path = (
+        f"_global_assets/{user_id}/{asset_type}/{filename}"
+        if user_id is not None
+        else f"_global_assets/{asset_type}/{filename}"
+    )
     storage = get_media_storage()
     if storage.enabled:
         return RedirectResponse(

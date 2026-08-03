@@ -166,6 +166,8 @@ async def agent_chat(
     service = get_assistant_service()
 
     # 验证项目是否存在
+    if not service.pm.is_project_owned_by(body.project_name, _user.id):
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=body.project_name))
     try:
         service.pm.get_project_path(body.project_name)
     except (FileNotFoundError, KeyError):

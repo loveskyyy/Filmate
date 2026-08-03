@@ -88,6 +88,7 @@ describe("API", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    localStorage.clear();
   });
 
   describe("request", () => {
@@ -416,12 +417,14 @@ describe("API", () => {
     });
 
     it("builds static file and stream urls", () => {
+      localStorage.setItem("arcreel_auth_token", "media-token");
       expect(API.getFileUrl("my project", "source/a.txt")).toBe(
-        "/api/v1/files/my%20project/source/a.txt",
+        "/api/v1/files/my%20project/source/a.txt?token=media-token",
       );
       expect(API.getFileUrl("my project", "source/a.txt", 3)).toBe(
-        "/api/v1/files/my%20project/source/a.txt?v=3",
+        "/api/v1/files/my%20project/source/a.txt?token=media-token&v=3",
       );
+      localStorage.removeItem("arcreel_auth_token");
       expect(API.getAssistantEntriesStreamUrl("demo", "session-1")).toBe(
         "/api/v1/projects/demo/assistant/sessions/session-1/entries/stream",
       );
@@ -1012,9 +1015,16 @@ describe("API", () => {
 
   describe("getGlobalAssetUrl", () => {
     it("returns URL for valid path", () => {
+      localStorage.setItem("arcreel_auth_token", "media-token");
       const url = API.getGlobalAssetUrl("_global_assets/character/abc.png", "123");
       expect(url).toContain("/global-assets/character/abc.png");
       expect(url).toContain("fp=123");
+      expect(url).toContain("token=media-token");
+    });
+
+    it("includes the user namespace for scoped global assets", () => {
+      const url = API.getGlobalAssetUrl("_global_assets/7/character/abc.png");
+      expect(url).toContain("/global-assets/7/character/abc.png");
     });
 
     it("returns null for null path", () => {
@@ -1023,6 +1033,16 @@ describe("API", () => {
 
     it("returns null for non-global path", () => {
       expect(API.getGlobalAssetUrl("regular/path.png")).toBeNull();
+    });
+  });
+
+  describe("getAuthenticatedMediaUrl", () => {
+    it("为后端返回的相对媒体 URL 附加当前登录凭证", () => {
+      localStorage.setItem("arcreel_auth_token", "media-token");
+
+      expect(API.getAuthenticatedMediaUrl("/api/v1/files/demo/versions/v1.png?fp=1")).toBe(
+        "/api/v1/files/demo/versions/v1.png?fp=1&token=media-token",
+      );
     });
   });
 });

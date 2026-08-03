@@ -54,11 +54,14 @@ class _FakePM:
         (self.base / "empty").mkdir(parents=True, exist_ok=True)
         (self.base / "remove-me").mkdir(parents=True, exist_ok=True)
 
-    def list_projects(self):
+    def list_projects(self, *, user_id=None):
         return ["ready", "empty", "broken"]
 
     def project_exists(self, name):
         return name in {"ready", "broken"}
+
+    def is_project_owned_by(self, name, user_id):
+        return self.project_exists(name) and user_id == 1
 
     def load_project(self, name):
         if name == "broken":
@@ -79,13 +82,16 @@ class _FakePM:
     def get_project_status(self, name):
         return {"current_stage": "source_ready"}
 
-    def create_project(self, name, content_mode="narration"):
+    def create_project(self, name, content_mode="narration", *, user_id=1):
         if not name or not re.fullmatch(r"[A-Za-z0-9-]+", name):
             raise ValueError("项目标识仅允许英文字母、数字和中划线")
         if name == "exists":
             raise FileExistsError(name)
         self.created.add(name)
         (self.base / name).mkdir(parents=True, exist_ok=True)
+
+    def remove_project_owner(self, name):
+        return None
 
     def generate_project_name(self, title):
         return self.generated_names.pop(0)
@@ -1650,7 +1656,7 @@ class TestUnexpectedErrorsDoNotLeak:
         sentinel = "LEAKED_SECRET_export_archive"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
         # download_token 校验先放行，再让归档服务抛 RuntimeError 落到兜底
-        monkeypatch.setattr(projects, "verify_download_token", lambda token, name: {"sub": "u"})
+        monkeypatch.setattr(projects, "verify_download_token", lambda token, name: {"sub": "u", "uid": 1})
         monkeypatch.setattr(projects, "get_archive_service", _raise(sentinel))
         with client:
             resp = client.get("/api/v1/projects/ready/export?download_token=tok&scope=full")

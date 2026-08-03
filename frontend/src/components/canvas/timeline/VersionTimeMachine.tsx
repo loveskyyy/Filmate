@@ -188,6 +188,9 @@ export function VersionTimeMachine({
     selectedVersion != null
       ? versions.find((v) => v.version === selectedVersion) ?? null
       : null;
+  const selectedFileUrl = selectedInfo?.file_url
+    ? API.getAuthenticatedMediaUrl(selectedInfo.file_url)
+    : null;
 
   return (
     <div>
@@ -318,11 +321,11 @@ export function VersionTimeMachine({
                     </div>
 
                     {/* Media preview */}
-                    {selectedInfo.file_url &&
+                    {selectedFileUrl &&
                       (resourceType === "videos" || resourceType === "reference_videos" ? (
                         // eslint-disable-next-line jsx-a11y/media-has-caption -- 生成式预览视频暂无字幕源，将来如引入字幕生成则移除此 disable
                         <video
-                          src={selectedInfo.file_url}
+                          src={selectedFileUrl}
                           className="mb-2 w-full rounded-lg border border-gray-800 bg-black object-contain"
                           controls
                           playsInline
@@ -333,7 +336,7 @@ export function VersionTimeMachine({
                           className={`mb-2 flex w-full items-center justify-center rounded-lg border border-gray-800 bg-gray-900/70 p-2 ${getImagePreviewHeightClass(resourceType)}`}
                         >
                           <img
-                            src={selectedInfo.file_url}
+                            src={selectedFileUrl}
                             alt={t("version_preview_alt", { version: selectedInfo.version })}
                             className="max-h-full w-full object-contain"
                           />

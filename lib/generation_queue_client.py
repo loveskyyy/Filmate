@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from lib.db.base import DEFAULT_USER_ID
+from lib.app_data_dir import app_data_dir
 from lib.generation_queue import (
     TASK_WORKER_LEASE_TTL_SEC,
     get_generation_queue,
@@ -32,6 +32,16 @@ class TaskFailedError(RuntimeError):
 
 class TaskCancelledError(RuntimeError):
     """Raised when queued task is cancelled by user."""
+
+
+def _resolve_enqueue_user_id(project_name: str, user_id: int | None) -> int:
+    """Resolve omitted skill-task ownership from the project's owning user."""
+    if user_id is not None:
+        return user_id
+
+    from lib.project_manager import ProjectManager
+
+    return ProjectManager(app_data_dir()).get_project_owner(project_name)
 
 
 class TaskWaitTimeoutError(TimeoutError):
@@ -121,7 +131,7 @@ async def enqueue_and_wait(
     dependency_task_id: str | None = None,
     dependency_group: str | None = None,
     dependency_index: int | None = None,
-    user_id: int = DEFAULT_USER_ID,
+    user_id: int | None = None,
 ) -> dict[str, Any]:
     enqueue_result = await enqueue_task_only(
         project_name=project_name,
@@ -170,7 +180,7 @@ async def enqueue_task_only(
     dependency_task_id: str | None = None,
     dependency_group: str | None = None,
     dependency_index: int | None = None,
-    user_id: int = DEFAULT_USER_ID,
+    user_id: int | None = None,
 ) -> dict[str, Any]:
     queue = get_generation_queue()
 
@@ -188,7 +198,7 @@ async def enqueue_task_only(
         dependency_task_id=dependency_task_id,
         dependency_group=dependency_group,
         dependency_index=dependency_index,
-        user_id=user_id,
+        user_id=_resolve_enqueue_user_id(project_name, user_id),
     )
     return enqueue_result
 

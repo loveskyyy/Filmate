@@ -5,7 +5,7 @@
 """
 
 import os
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -29,6 +29,15 @@ def client():
         },
     ):
         app = FastAPI()
+        db_result = MagicMock()
+        db_result.scalar_one_or_none.return_value = None
+        db_session = MagicMock()
+        db_session.execute = AsyncMock(return_value=db_result)
+
+        async def _fake_session():
+            yield db_session
+
+        app.dependency_overrides[auth_router.get_async_session] = _fake_session
         app.include_router(auth_router.router, prefix="/api/v1")
         with TestClient(app) as c:
             yield c

@@ -248,6 +248,7 @@ class TestGenerationQueueClient:
             script_file="episode_01.json",
             dependency_group="episode_01.json:group:1",
             dependency_index=0,
+            user_id=1,
         )
 
         task = await generation_queue.get_task(result["task_id"])

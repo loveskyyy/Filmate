@@ -5,6 +5,8 @@
 """
 
 import logging
+import os
+import secrets
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -78,7 +80,24 @@ async def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token = create_token(form_data.username)
+    from lib.db.base import DEFAULT_USER_ID
+
+    expected_username = os.environ.get("AUTH_USERNAME", "admin")
+    if not is_auth_enabled() or secrets.compare_digest(form_data.username, expected_username):
+        user_id = DEFAULT_USER_ID
+        role = "admin"
+    else:
+        from sqlalchemy import select
+
+        from lib.db.models.user import User
+
+        result = await session.execute(select(User).where(User.username == form_data.username))
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status_code=401, detail=_t("unauthorized"))
+        user_id = user.id
+        role = user.role
+    token = create_token(form_data.username, user_id=user_id, role=role)
     logger.info("用户登录成功: %s", form_data.username)
     return TokenResponse(access_token=token, token_type="bearer")
 

@@ -25,16 +25,16 @@ class _FakeQueue:
         self.task = task
         self.cursors = []
 
-    async def get_latest_event_id(self, project_name=None):
+    async def get_latest_event_id(self, project_name=None, **kwargs):
         return self.latest
 
-    async def get_recent_tasks_snapshot(self, project_name=None, limit=1000):
+    async def get_recent_tasks_snapshot(self, project_name=None, limit=1000, **kwargs):
         return self.snapshot
 
-    async def get_task_stats(self, project_name=None):
+    async def get_task_stats(self, project_name=None, **kwargs):
         return self.stats
 
-    async def get_events_since(self, last_event_id, project_name=None, limit=200):
+    async def get_events_since(self, last_event_id, project_name=None, limit=200, **kwargs):
         self.cursors.append(last_event_id)
         if self.events:
             events = self.events
@@ -42,7 +42,7 @@ class _FakeQueue:
             return events
         return []
 
-    async def get_task(self, task_id):
+    async def get_task(self, task_id, **kwargs):
         return self.task
 
 
@@ -120,7 +120,7 @@ class TestTasksRouterMore:
         app = FastAPI()
         app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
         app.dependency_overrides[get_current_user_flexible] = lambda: CurrentUserInfo(
-            id="default", sub="testuser", role="admin"
+            id=1, sub="testuser", role="admin"
         )
         app.include_router(tasks_router.router, prefix="/api/v1")
 
@@ -161,7 +161,7 @@ class _RenderQueue:
             "page_size": 50,
         }
 
-    async def get_task(self, task_id):
+    async def get_task(self, task_id, **kwargs):
         return dict(self._task) if self._task is not None else None
 
 

@@ -28,15 +28,38 @@ async def _assets_env(tmp_path, monkeypatch):
     monkeypatch.setattr(assets, "async_session_factory", factory)
     monkeypatch.setattr(assets, "pm", pm)
 
+    current_user = {"value": CurrentUserInfo(id=1, sub="testuser", role="admin")}
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=1, sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: current_user["value"]
     app.include_router(assets.router, prefix="/api/v1")
 
-    yield {"client": TestClient(app), "pm": pm}
+    yield {"client": TestClient(app), "pm": pm, "current_user": current_user}
     await engine.dispose()
 
 
 class TestAssetsCRUD:
+    def test_same_name_and_visibility_are_scoped_by_user(self, _assets_env):
+        client = _assets_env["client"]
+        current_user = _assets_env["current_user"]
+
+        current_user["value"] = CurrentUserInfo(id=2, sub="alice", role="user")
+        alice = client.post("/api/v1/assets", data={"type": "character", "name": "主角"})
+        assert alice.status_code == 200, alice.text
+        alice_id = alice.json()["asset"]["id"]
+
+        current_user["value"] = CurrentUserInfo(id=3, sub="bob", role="user")
+        bob = client.post("/api/v1/assets", data={"type": "character", "name": "主角"})
+        assert bob.status_code == 200, bob.text
+        bob_id = bob.json()["asset"]["id"]
+
+        listed = client.get("/api/v1/assets")
+        assert [item["id"] for item in listed.json()["items"]] == [bob_id]
+        assert client.get(f"/api/v1/assets/{alice_id}").status_code == 404
+
+        current_user["value"] = CurrentUserInfo(id=2, sub="alice", role="user")
+        assert [item["id"] for item in client.get("/api/v1/assets").json()["items"]] == [alice_id]
+        assert client.get(f"/api/v1/assets/{bob_id}").status_code == 404
+
     def test_create_and_list(self, _assets_env):
         client = _assets_env["client"]
         r = client.post(
@@ -173,6 +196,30 @@ class TestAssetsCRUD:
 
 
 class TestFromProject:
+    def test_body_project_references_require_current_user_ownership(self, _assets_env):
+        client = _assets_env["client"]
+        pm = _assets_env["pm"]
+        current_user = _assets_env["current_user"]
+        pm.create_project("alice-project", user_id=2)
+
+        current_user["value"] = CurrentUserInfo(id=3, sub="bob", role="user")
+        from_project = client.post(
+            "/api/v1/assets/from-project",
+            json={
+                "project_name": "alice-project",
+                "resource_type": "character",
+                "resource_id": "主角",
+            },
+        )
+        apply_to_project = client.post(
+            "/api/v1/assets/apply-to-project",
+            json={"asset_ids": [], "target_project": "alice-project", "conflict_policy": "skip"},
+        )
+
+        assert from_project.status_code == 404
+        assert "主角" not in from_project.text
+        assert apply_to_project.status_code == 404
+
     def test_from_project_copies_image(self, _assets_env):
         client = _assets_env["client"]
         pm = _assets_env["pm"]
@@ -199,7 +246,7 @@ class TestFromProject:
         )
         assert r.status_code == 200, r.text
         ip = r.json()["asset"]["image_path"]
-        assert ip and ip.startswith("_global_assets/character/")
+        assert ip and ip.startswith("_global_assets/1/character/")
         # 落盘文件与源文件相同字节
         assert (pm.projects_root / ip).read_bytes() == b"img"
 

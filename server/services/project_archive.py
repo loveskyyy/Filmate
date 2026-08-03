@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from lib.data_validator import DataValidator, ValidationResult
+from lib.db.base import DEFAULT_USER_ID
 from lib.json_io import load_json
 from lib.media_storage import get_media_storage
 from lib.project_change_hints import emit_project_change_hint
@@ -237,6 +238,7 @@ class ProjectArchiveService:
         *,
         uploaded_filename: str | None = None,
         conflict_policy: str = "prompt",
+        user_id: int = DEFAULT_USER_ID,
     ) -> ProjectImportResult:
         if conflict_policy not in {"prompt", "rename", "overwrite"}:
             raise ProjectArchiveValidationError(
@@ -322,6 +324,7 @@ class ProjectArchiveService:
                         staging_dir,
                         target_name,
                         overwrite=(conflict_policy == "overwrite"),
+                        user_id=user_id,
                     )
 
                     imported_project = self.project_manager.load_project(target_name)
@@ -1634,12 +1637,19 @@ class ProjectArchiveService:
         project_name: str,
         *,
         overwrite: bool,
+        user_id: int,
     ) -> None:
         target_dir = self.project_manager.projects_root / project_name
         backup_dir: Path | None = None
 
         try:
             if overwrite and target_dir.exists():
+                if not self.project_manager.is_project_owned_by(project_name, user_id):
+                    raise ProjectArchiveValidationError(
+                        "项目不存在或无权覆盖",
+                        status_code=404,
+                        errors=["目标项目不存在或不属于当前用户。"],
+                    )
                 backup_dir = target_dir.with_name(f".import-backup-{target_dir.name}-{secrets.token_hex(4)}")
                 target_dir.rename(backup_dir)
 
@@ -1648,6 +1658,7 @@ class ProjectArchiveService:
             # rollback：删 target_dir + 恢复 backup_dir。否则失败时旧项目已经被删，
             # 用户会丢数据（overwrite 分支）或留半安装状态（new 分支）
             self.project_manager.sync_agent_profile(target_dir)
+            self.project_manager.set_project_owner(project_name, user_id)
         except Exception:
             if target_dir.exists():
                 shutil.rmtree(target_dir, ignore_errors=True)

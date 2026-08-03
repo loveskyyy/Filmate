@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from lib.agent_profile import agent_profile_dir
 from lib.asset_types import ASSET_SPECS, validate_asset_name
+from lib.db.base import DEFAULT_USER_ID
 from lib.episode_ledger import SOURCE_TEXT_SUFFIXES
 from lib.episode_paths import episode_script_relpath
 from lib.json_io import atomic_write_json, load_json, load_json_or_none
@@ -151,6 +152,8 @@ class ProjectManager:
 
     # 项目元数据文件名
     PROJECT_FILE = "project.json"
+    PROJECT_OWNERS_FILE = "_project_owners.json"
+    PROJECT_OWNERS_SCHEMA_VERSION = 1
 
     @staticmethod
     def normalize_project_name(name: str) -> str:
@@ -216,19 +219,100 @@ class ProjectManager:
         self.projects_root = Path(projects_root)
         self.projects_root.mkdir(parents=True, exist_ok=True)
 
-    def list_projects(self) -> list[str]:
-        """列出所有项目"""
-        return [d.name for d in self.projects_root.iterdir() if d.is_dir() and not d.name.startswith((".", "_"))]
+    def list_projects(self, *, user_id: int | None = None) -> list[str]:
+        """列出项目；传入 ``user_id`` 时仅返回该用户拥有的项目。"""
+        names = [d.name for d in self.projects_root.iterdir() if d.is_dir() and not d.name.startswith((".", "_"))]
+        if user_id is None:
+            return names
+        return [name for name in names if self.is_project_owned_by(name, user_id)]
 
-    def get_global_assets_root(self) -> Path:
-        """返回全局资产根目录，并确保 character/scene/prop 子目录存在。"""
+    @property
+    def _project_owners_path(self) -> Path:
+        return self.projects_root / self.PROJECT_OWNERS_FILE
+
+    @contextmanager
+    def _project_owners_lock(self):
+        lock_path = self.projects_root / ".project_owners.lock"
+        with portalocker.Lock(lock_path, flags=portalocker.LOCK_EX):
+            yield
+
+    def _read_project_owners_unlocked(self) -> dict[str, int]:
+        data = load_json_or_none(self._project_owners_path)
+        if data is None:
+            return {}
+        if not isinstance(data, dict) or data.get("schema_version") != self.PROJECT_OWNERS_SCHEMA_VERSION:
+            raise ValueError("项目所有权注册表格式无效")
+        raw_owners = data.get("owners")
+        if not isinstance(raw_owners, dict):
+            raise ValueError("项目所有权注册表缺少 owners")
+        owners: dict[str, int] = {}
+        for raw_name, raw_user_id in raw_owners.items():
+            if not isinstance(raw_name, str) or isinstance(raw_user_id, bool) or not isinstance(raw_user_id, int):
+                raise ValueError("项目所有权注册表包含非法条目")
+            owners[self.normalize_project_name(raw_name)] = raw_user_id
+        return owners
+
+    def get_project_owner(self, name: str) -> int:
+        """返回项目所有者；存量无登记项目归默认用户。"""
+        name = self.normalize_project_name(name)
+        if not (self.projects_root / name / self.PROJECT_FILE).exists():
+            raise FileNotFoundError(f"项目 '{name}' 不存在")
+        with self._project_owners_lock():
+            owners = self._read_project_owners_unlocked()
+        return owners.get(name, DEFAULT_USER_ID)
+
+    def is_project_owned_by(self, name: str, user_id: int) -> bool:
+        try:
+            return self.get_project_owner(name) == user_id
+        except FileNotFoundError:
+            return False
+
+    def set_project_owner(self, name: str, user_id: int) -> None:
+        """原子登记项目所有者。"""
+        name = self.normalize_project_name(name)
+        if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+            raise ValueError("user_id 必须是正整数")
+        if not (self.projects_root / name / self.PROJECT_FILE).exists():
+            raise FileNotFoundError(f"项目 '{name}' 不存在")
+        with self._project_owners_lock():
+            owners = self._read_project_owners_unlocked()
+            owners[name] = user_id
+            atomic_write_json(
+                self._project_owners_path,
+                {"schema_version": self.PROJECT_OWNERS_SCHEMA_VERSION, "owners": owners},
+            )
+
+    def remove_project_owner(self, name: str) -> None:
+        """删除项目所有权登记；项目目录删除流程调用。"""
+        name = self.normalize_project_name(name)
+        with self._project_owners_lock():
+            owners = self._read_project_owners_unlocked()
+            if owners.pop(name, None) is None:
+                return
+            atomic_write_json(
+                self._project_owners_path,
+                {"schema_version": self.PROJECT_OWNERS_SCHEMA_VERSION, "owners": owners},
+            )
+
+    def get_global_assets_root(self, *, user_id: int | None = None) -> Path:
+        """返回全局资产根目录；传用户时使用独立文件命名空间。"""
         root = self.projects_root / "_global_assets"
+        if user_id is not None:
+            if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+                raise ValueError("user_id 必须是正整数")
+            root = root / str(user_id)
         root.mkdir(parents=True, exist_ok=True)
         for sub in ("character", "scene", "prop"):
             (root / sub).mkdir(exist_ok=True)
         return root
 
-    def create_project(self, name: str, content_mode: ContentMode = "narration") -> Path:
+    def create_project(
+        self,
+        name: str,
+        content_mode: ContentMode = "narration",
+        *,
+        user_id: int = DEFAULT_USER_ID,
+    ) -> Path:
         """
         创建新项目
 
@@ -254,6 +338,7 @@ class ProjectManager:
         try:
             atomic_write_json(project_dir / self.PROJECT_FILE, {"content_mode": content_mode})
             self.sync_agent_profile(project_dir, content_mode=content_mode)
+            self.set_project_owner(name, user_id)
         except Exception:
             # sync 失败时回滚 project_dir，避免残缺目录阻塞重试（同名 create 撞 FileExistsError）
             shutil.rmtree(project_dir, ignore_errors=True)

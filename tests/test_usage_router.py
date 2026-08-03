@@ -12,7 +12,7 @@ class _FakeTracker:
     async def get_calls(self, **kwargs):
         return {"items": [{"id": 1}], "total": 1, "page": kwargs["page"], "page_size": kwargs["page_size"]}
 
-    async def get_projects_list(self):
+    async def get_projects_list(self, **kwargs):
         return ["demo", "demo2"]
 
 

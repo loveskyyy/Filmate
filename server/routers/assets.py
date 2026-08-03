@@ -58,7 +58,7 @@ def _serialize(asset) -> dict:
     }
 
 
-async def _save_upload(file: UploadFile, asset_type: str, _t: Translator) -> str:
+async def _save_upload(file: UploadFile, asset_type: str, user_id: int, _t: Translator) -> str:
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_EXTS:
         raise HTTPException(status_code=415, detail=_t("asset_unsupported_format"))
@@ -67,12 +67,12 @@ async def _save_upload(file: UploadFile, asset_type: str, _t: Translator) -> str
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail=_t("asset_upload_too_large"))
 
-    root = get_project_manager().get_global_assets_root() / asset_type
+    root = get_project_manager().get_global_assets_root(user_id=user_id) / asset_type
     uid = uuid.uuid4().hex
     target = root / f"{uid}{ext}"
     await asyncio.to_thread(target.write_bytes, data)
     # 存相对路径（相对 projects_root）
-    relative_path = f"_global_assets/{asset_type}/{uid}{ext}"
+    relative_path = f"_global_assets/{user_id}/{asset_type}/{uid}{ext}"
     await get_media_storage(get_project_manager().projects_root).sync_global_paths_async([relative_path])
     return relative_path
 
@@ -88,6 +88,14 @@ def _delete_global_asset_file(rel_path: str) -> None:
         logger.warning("delete global asset file failed: %s", rel_path)
 
 
+def _require_project_ownership(project_name: str, user_id: int, _t: Translator) -> None:
+    if not get_project_manager().is_project_owned_by(project_name, user_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_t("asset_target_project_not_found", project=project_name),
+        )
+
+
 @router.get("")
 async def list_assets(
     _user: CurrentUser,
@@ -98,14 +106,14 @@ async def list_assets(
     offset: int = 0,
 ):
     async with async_session_factory() as s:
-        items = await AssetRepository(s).list(type=type, q=q, limit=limit, offset=offset)
+        items = await AssetRepository(s, user_id=_user.id).list(type=type, q=q, limit=limit, offset=offset)
         return {"items": [_serialize(a) for a in items]}
 
 
 @router.get("/{asset_id}")
 async def get_asset(asset_id: str, _user: CurrentUser, _t: Translator):
     async with async_session_factory() as s:
-        a = await AssetRepository(s).get_by_id(asset_id)
+        a = await AssetRepository(s, user_id=_user.id).get_by_id(asset_id)
         if not a:
             raise HTTPException(status_code=404, detail=_t("asset_not_found", name=asset_id))
         return {"asset": _serialize(a)}
@@ -128,12 +136,12 @@ async def create_asset(
     # 1) 先落盘再 create；IntegrityError 路径负责清理 orphan
     image_path: str | None = None
     if image is not None and image.filename:
-        image_path = await _save_upload(image, type, _t)
+        image_path = await _save_upload(image, type, _user.id, _t)
 
     # 2) 真正 create；任何失败路径都必须清理已落盘文件，保证 DB/磁盘一致
     try:
         async with async_session_factory() as s:
-            repo = AssetRepository(s)
+            repo = AssetRepository(s, user_id=_user.id)
             try:
                 a = await repo.create(
                     type=type,
@@ -179,7 +187,7 @@ async def update_asset(
     if "name" in patch:
         patch["name"] = _validate_asset_name(patch["name"], _t)
     async with async_session_factory() as s:
-        repo = AssetRepository(s)
+        repo = AssetRepository(s, user_id=_user.id)
         a = await repo.get_by_id(asset_id)
         if not a:
             raise HTTPException(status_code=404, detail=_t("asset_not_found", name=asset_id))
@@ -199,7 +207,7 @@ async def update_asset(
 @router.delete("/{asset_id}", status_code=204)
 async def delete_asset(asset_id: str, _user: CurrentUser, _t: Translator):
     async with async_session_factory() as s:
-        repo = AssetRepository(s)
+        repo = AssetRepository(s, user_id=_user.id)
         a = await repo.get_by_id(asset_id)
         if a:
             if a.image_path:
@@ -218,7 +226,7 @@ async def replace_image(
 ):
     # 1) 先取资产并校验存在
     async with async_session_factory() as s:
-        repo = AssetRepository(s)
+        repo = AssetRepository(s, user_id=_user.id)
         a = await repo.get_by_id(asset_id)
         if not a:
             raise HTTPException(status_code=404, detail=_t("asset_not_found", name=asset_id))
@@ -226,12 +234,12 @@ async def replace_image(
         asset_type = a.type
 
     # 2) 先保存新图（会触发 415/413 校验）—— 旧文件仍完好
-    new_path = await _save_upload(image, asset_type, _t)
+    new_path = await _save_upload(image, asset_type, _user.id, _t)
 
     # 3) 更新 DB；若写入失败则清理已落盘的新文件（旧文件保留）
     try:
         async with async_session_factory() as s:
-            repo = AssetRepository(s)
+            repo = AssetRepository(s, user_id=_user.id)
             a = await repo.update(asset_id, image_path=new_path)
             await s.commit()
             await s.refresh(a)
@@ -263,6 +271,8 @@ async def from_project(
     # 1) 类型合法性
     if req.resource_type not in GLOBAL_LIBRARY_ASSET_TYPES:
         raise HTTPException(status_code=400, detail=_t("asset_invalid_type"))
+
+    _require_project_ownership(req.project_name, _user.id, _t)
 
     # 2) 加载项目
     try:
@@ -314,7 +324,7 @@ async def from_project(
 
     # 4) DB 预检查（orphan-safe：先查再拷贝文件）
     async with async_session_factory() as s:
-        repo = AssetRepository(s)
+        repo = AssetRepository(s, user_id=_user.id)
         existing = await repo.get_by_type_name(req.resource_type, asset_name)
 
     if existing is not None and not req.overwrite:
@@ -330,17 +340,17 @@ async def from_project(
     new_image_path: str | None = None
     if source_sheet_path is not None:
         ext = source_sheet_path.suffix.lower() or ".png"
-        root = get_project_manager().get_global_assets_root() / req.resource_type
+        root = get_project_manager().get_global_assets_root(user_id=_user.id) / req.resource_type
         uid = uuid.uuid4().hex
         target = root / f"{uid}{ext}"
         await asyncio.to_thread(shutil.copyfile, source_sheet_path, target)
-        new_image_path = f"_global_assets/{req.resource_type}/{uid}{ext}"
+        new_image_path = f"_global_assets/{_user.id}/{req.resource_type}/{uid}{ext}"
         await get_media_storage(get_project_manager().projects_root).sync_global_paths_async([new_image_path])
 
     # 6) 写 DB：失败路径清理拷贝文件
     try:
         async with async_session_factory() as s:
-            repo = AssetRepository(s)
+            repo = AssetRepository(s, user_id=_user.id)
             if existing is not None:
                 # overwrite：先记下旧文件路径，commit 成功后再删；回滚时旧文件保留
                 old_image = (
@@ -403,6 +413,8 @@ async def apply_to_project(
     if req.conflict_policy not in {"skip", "overwrite", "rename"}:
         raise HTTPException(status_code=400, detail=_t("asset_invalid_conflict_policy"))
 
+    _require_project_ownership(req.target_project, _user.id, _t)
+
     # 2) 校验目标项目存在
     project_manager = get_project_manager()
     try:
@@ -419,7 +431,7 @@ async def apply_to_project(
 
     # 3) 批量读取所有请求的 asset，缺失的直接归入 failed
     async with async_session_factory() as s:
-        assets = await AssetRepository(s).get_by_ids(req.asset_ids)
+        assets = await AssetRepository(s, user_id=_user.id).get_by_ids(req.asset_ids)
     assets_by_id = {a.id: a for a in assets}
     for asset_id in req.asset_ids:
         if asset_id not in assets_by_id:

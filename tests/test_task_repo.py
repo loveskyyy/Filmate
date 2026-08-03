@@ -26,6 +26,33 @@ async def db_session(engine):
 
 
 class TestTaskRepository:
+    async def test_user_scoped_reads_hide_other_users_tasks_and_events(self, db_session):
+        unscoped = TaskRepository(db_session)
+        alice = await unscoped.enqueue(
+            project_name="alice-project",
+            task_type="storyboard",
+            media_type="image",
+            resource_id="A",
+            payload={},
+            user_id=2,
+        )
+        bob = await unscoped.enqueue(
+            project_name="bob-project",
+            task_type="storyboard",
+            media_type="image",
+            resource_id="B",
+            payload={},
+            user_id=3,
+        )
+
+        alice_repo = TaskRepository(db_session, user_id=2)
+        bob_repo = TaskRepository(db_session, user_id=3)
+
+        assert await alice_repo.get(bob["task_id"]) is None
+        assert await bob_repo.get(alice["task_id"]) is None
+        assert [item["task_id"] for item in (await alice_repo.list_tasks())["items"]] == [alice["task_id"]]
+        assert [event["task_id"] for event in await alice_repo.get_events_since(last_event_id=0)] == [alice["task_id"]]
+
     async def test_enqueue_dedupe_claim_succeed(self, db_session):
         repo = TaskRepository(db_session)
 

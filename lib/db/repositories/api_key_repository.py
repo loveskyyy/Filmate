@@ -77,6 +77,7 @@ class ApiKeyRepository(BaseRepository):
             "created_at": row.created_at,
             "expires_at": row.expires_at,
             "last_used_at": row.last_used_at,
+            "user_id": row.user_id,
         }
 
     async def get_by_id(self, key_id: int) -> dict[str, Any] | None:
@@ -93,7 +94,10 @@ class ApiKeyRepository(BaseRepository):
 
     async def delete(self, key_id: int) -> bool:
         """Delete a key by ID. Returns True if deleted, False if not found."""
-        result = await self.session.execute(sa_delete(ApiKey).where(ApiKey.id == key_id))
+        stmt = sa_delete(ApiKey).where(ApiKey.id == key_id)
+        if self.user_id is not None:
+            stmt = stmt.where(ApiKey.user_id == self.user_id)
+        result = await self.session.execute(stmt)
         return rowcount(result) > 0
 
     async def touch_last_used(self, key_hash: str) -> None:

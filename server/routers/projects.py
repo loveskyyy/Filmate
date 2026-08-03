@@ -188,6 +188,7 @@ async def import_project_archive(
                 Path(upload_path),
                 uploaded_filename=file.filename,
                 conflict_policy=conflict_policy,
+                user_id=_user.id,
             )
 
         result = await asyncio.to_thread(_sync)
@@ -245,7 +246,12 @@ async def create_export_token(
 
         diagnostics = await asyncio.to_thread(_sync)
         username = current_user.sub
-        download_token = create_download_token(username, name)
+        download_token = create_download_token(
+            username,
+            name,
+            user_id=current_user.id,
+            role=current_user.role,
+        )
         return {
             "download_token": download_token,
             "expires_in": 300,
@@ -273,7 +279,10 @@ async def export_project_archive(
     import jwt as pyjwt
 
     try:
-        verify_download_token(download_token, name)
+        download_payload = verify_download_token(download_token, name)
+        token_user_id = download_payload.get("uid")
+        if not isinstance(token_user_id, int) or not get_project_manager().is_project_owned_by(name, token_user_id):
+            raise ValueError("token user 与项目所有者不匹配")
     except pyjwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail=_t("download_expired"))
     except ValueError:
@@ -334,7 +343,10 @@ def export_jianying_draft(
 
     # 1. 验证 download_token
     try:
-        verify_download_token(download_token, name)
+        download_payload = verify_download_token(download_token, name)
+        token_user_id = download_payload.get("uid")
+        if not isinstance(token_user_id, int) or not get_project_manager().is_project_owned_by(name, token_user_id):
+            raise ValueError("token user 与项目所有者不匹配")
     except pyjwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail=_t("download_expired"))
     except ValueError:
@@ -380,7 +392,7 @@ async def list_projects(_user: CurrentUser):
         manager = get_project_manager()
         calculator = get_status_calculator()
         projects = []
-        for name in manager.list_projects():
+        for name in manager.list_projects(user_id=_user.id):
             try:
                 # 尝试加载项目元数据
                 if manager.project_exists(name):
@@ -511,7 +523,11 @@ async def create_project(
                     validate_backend_value(value, field_name, _t)
 
             try:
-                manager.create_project(project_name, content_mode=req.content_mode or "narration")
+                manager.create_project(
+                    project_name,
+                    content_mode=req.content_mode or "narration",
+                    user_id=_user.id,
+                )
             except FileExistsError:
                 raise HTTPException(status_code=400, detail=_t("project_exists", name=project_name))
             extras = {
@@ -825,6 +841,7 @@ async def delete_project(name: str, _user: CurrentUser, _t: Translator):
             project_manager.get_project_path(name)
             get_media_storage(project_manager.projects_root).delete_project_media(name)
             project_manager.delete_project_directory(name)
+            project_manager.remove_project_owner(name)
             return {"success": True, "message": _t("project_deleted", name=name)}
 
         return await asyncio.to_thread(_sync)

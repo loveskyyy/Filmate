@@ -72,7 +72,7 @@ def _transform_task_event(raw_event: dict, stats: dict) -> dict:
 @router.get("/tasks/stats")
 async def get_task_stats(_user: CurrentUser, project_name: str | None = None):
     queue = get_task_queue()
-    stats = await queue.get_task_stats(project_name=project_name)
+    stats = await queue.get_task_stats(project_name=project_name, user_id=_user.id)
     return {"stats": stats}
 
 
@@ -95,6 +95,7 @@ async def list_tasks(
         source=source,
         page=page,
         page_size=page_size,
+        user_id=_user.id,
     )
     result["items"] = [_localize_task(task, _t) for task in result.get("items", [])]
     return result
@@ -119,6 +120,7 @@ async def list_project_tasks(
         source=source,
         page=page,
         page_size=page_size,
+        user_id=_user.id,
     )
     result["items"] = [_localize_task(task, _t) for task in result.get("items", [])]
     return result
@@ -142,12 +144,12 @@ async def stream_tasks(
         cursor = 0
     cursor = max(0, int(cursor))
 
-    latest_event_id = await queue.get_latest_event_id(project_name=project_name)
+    latest_event_id = await queue.get_latest_event_id(project_name=project_name, user_id=_user.id)
     snapshot_last_event_id = max(cursor, latest_event_id) if resume_requested else latest_event_id
     snapshot = {
         "project_name": project_name,
-        "tasks": await queue.get_recent_tasks_snapshot(project_name=project_name, limit=1000),
-        "stats": await queue.get_task_stats(project_name=project_name),
+        "tasks": await queue.get_recent_tasks_snapshot(project_name=project_name, limit=1000, user_id=_user.id),
+        "stats": await queue.get_task_stats(project_name=project_name, user_id=_user.id),
         "last_event_id": snapshot_last_event_id,
         "generated_at": _utc_now_iso(),
     }
@@ -162,9 +164,10 @@ async def stream_tasks(
             last_event_id=cursor,
             project_name=project_name,
             limit=200,
+            user_id=_user.id,
         )
         if events:
-            batch_stats = await queue.get_task_stats(project_name=project_name)
+            batch_stats = await queue.get_task_stats(project_name=project_name, user_id=_user.id)
             for event in events:
                 cursor = int(event["id"])
                 transformed = _transform_task_event(event, batch_stats)
@@ -182,7 +185,7 @@ async def stream_tasks(
 async def cancel_preview(task_id: str, _user: CurrentUser):
     queue = get_task_queue()
     try:
-        preview = await queue.get_cancel_preview(task_id)
+        preview = await queue.get_cancel_preview(task_id, user_id=_user.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return preview
@@ -192,7 +195,7 @@ async def cancel_preview(task_id: str, _user: CurrentUser):
 async def cancel_task(task_id: str, _user: CurrentUser):
     queue = get_task_queue()
     try:
-        result = await queue.cancel_task(task_id)
+        result = await queue.cancel_task(task_id, user_id=_user.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return result
@@ -201,14 +204,14 @@ async def cancel_task(task_id: str, _user: CurrentUser):
 @router.get("/projects/{project_name}/tasks/cancel-all-preview")
 async def cancel_all_preview(project_name: str, _user: CurrentUser):
     queue = get_task_queue()
-    queued_count = await queue.get_cancel_all_preview(project_name)
+    queued_count = await queue.get_cancel_all_preview(project_name, user_id=_user.id)
     return {"queued_count": queued_count}
 
 
 @router.post("/projects/{project_name}/tasks/cancel-all")
 async def cancel_all_queued(project_name: str, _user: CurrentUser):
     queue = get_task_queue()
-    result = await queue.cancel_all_queued(project_name)
+    result = await queue.cancel_all_queued(project_name, user_id=_user.id)
     return result
 
 
@@ -219,7 +222,7 @@ async def get_task(
     _t: Translator,
 ):
     queue = get_task_queue()
-    task = await queue.get_task(task_id)
+    task = await queue.get_task(task_id, user_id=_user.id)
     if not task:
         raise HTTPException(status_code=404, detail=_t("task_not_found", id=task_id))
     return {"task": _localize_task(task, _t)}

@@ -78,20 +78,20 @@ class TestEnsureAuthPasswordKillSwitch:
 
 
 class TestCheckCredentialsKillSwitch:
-    def test_disabled_returns_true_for_any_input(self):
+    async def test_disabled_returns_true_for_any_input(self):
         with patch.dict(os.environ, {"AUTH_ENABLED": "false"}):
-            assert auth_module.check_credentials("anyone", "anything") is True
-            assert auth_module.check_credentials("", "") is True
+            assert await auth_module.check_credentials("anyone", "anything", None) is True
+            assert await auth_module.check_credentials("", "", None) is True
 
-    def test_enabled_still_validates(self):
+    async def test_enabled_still_validates(self):
         env = {
             "AUTH_ENABLED": "true",
             "AUTH_USERNAME": "admin",
             "AUTH_PASSWORD": "pass123",
         }
         with patch.dict(os.environ, env):
-            assert auth_module.check_credentials("admin", "pass123") is True
-            assert auth_module.check_credentials("admin", "wrong") is False
+            assert await auth_module.check_credentials("admin", "pass123", None) is True
+            assert await auth_module.check_credentials("admin", "wrong", None) is False
 
 
 class TestVerifyDownloadTokenKillSwitch:

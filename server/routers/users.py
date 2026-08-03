@@ -95,7 +95,7 @@ async def login(data: LoginRequest, session: AsyncSession = Depends(get_session)
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="只有管理员才能登录后台")
 
-    token = create_token(data.username)
+    token = create_token(data.username, user_id=user.id, role=user.role)
     return {"access_token": token, "token_type": "bearer"}
 
 

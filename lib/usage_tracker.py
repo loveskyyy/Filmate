@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from lib.app_data_dir import app_data_dir
 from lib.db import safe_session_factory
 from lib.db.base import DEFAULT_USER_ID
 from lib.db.repositories.usage_repo import UsageRepository
@@ -32,9 +33,19 @@ class UsageTracker:
         aspect_ratio: str | None = None,
         generate_audio: bool = True,
         provider: str = PROVIDER_GEMINI,
-        user_id: int = DEFAULT_USER_ID,
+        user_id: int | None = None,
         segment_id: str | None = None,
     ) -> int:
+
+        if user_id is None and project_name:
+            from lib.project_manager import ProjectManager
+
+            try:
+                user_id = ProjectManager(app_data_dir()).get_project_owner(project_name)
+            except FileNotFoundError:
+                user_id = DEFAULT_USER_ID
+        if user_id is None:
+            user_id = DEFAULT_USER_ID
 
         async with self._session_factory() as session:
             repo = UsageRepository(session)
@@ -128,10 +139,11 @@ class UsageTracker:
         provider: str | None = None,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
+        user_id: int | None = None,
     ) -> dict[str, Any]:
 
         async with self._session_factory() as session:
-            repo = UsageRepository(session)
+            repo = UsageRepository(session, user_id=user_id)
             return await repo.get_stats(
                 project_name=project_name,
                 provider=provider,
@@ -145,10 +157,11 @@ class UsageTracker:
         provider: str | None = None,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
+        user_id: int | None = None,
     ) -> dict[str, Any]:
 
         async with self._session_factory() as session:
-            repo = UsageRepository(session)
+            repo = UsageRepository(session, user_id=user_id)
             return await repo.get_stats_grouped_by_provider(
                 project_name=project_name,
                 provider=provider,
@@ -165,10 +178,11 @@ class UsageTracker:
         end_date: datetime | None = None,
         page: int = 1,
         page_size: int = 20,
+        user_id: int | None = None,
     ) -> dict[str, Any]:
 
         async with self._session_factory() as session:
-            repo = UsageRepository(session)
+            repo = UsageRepository(session, user_id=user_id)
             return await repo.get_calls(
                 project_name=project_name,
                 call_type=call_type,
@@ -189,8 +203,8 @@ class UsageTracker:
             repo = UsageRepository(session)
             return await repo.get_project_image_costs_by_asset_type(project_name)
 
-    async def get_projects_list(self) -> list[str]:
+    async def get_projects_list(self, *, user_id: int | None = None) -> list[str]:
 
         async with self._session_factory() as session:
-            repo = UsageRepository(session)
+            repo = UsageRepository(session, user_id=user_id)
             return await repo.get_projects_list()

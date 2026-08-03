@@ -69,3 +69,19 @@ async def test_exists(repo):
     await repo.create(type="prop", name="key", description="", voice_style="")
     assert await repo.exists("prop", "key") is True
     assert await repo.exists("prop", "nope") is False
+
+
+async def test_asset_repository_isolates_rows_and_names_by_user(session):
+    alice_repo = AssetRepository(session, user_id=2)
+    bob_repo = AssetRepository(session, user_id=3)
+
+    alice_asset = await alice_repo.create(type="character", name="主角", description="Alice", voice_style="")
+    bob_asset = await bob_repo.create(type="character", name="主角", description="Bob", voice_style="")
+    await session.flush()
+
+    assert alice_asset.user_id == 2
+    assert bob_asset.user_id == 3
+    assert [asset.id for asset in await alice_repo.list(type=None, q=None)] == [alice_asset.id]
+    assert [asset.id for asset in await bob_repo.list(type=None, q=None)] == [bob_asset.id]
+    assert await alice_repo.get_by_id(bob_asset.id) is None
+    assert await bob_repo.get_by_id(alice_asset.id) is None
