@@ -16,6 +16,9 @@ from lib.db.models.user import User
 from lib.db.repositories.base import BaseRepository, rowcount
 from lib.providers import PROVIDER_GEMINI, CallType
 
+import logging
+logger = logging.getLogger(__name__)
+
 # 积分扣减换算常量
 # 1 CNY = 100 积分 (与微信充值 1 元 = 100 积分口径一致)
 CREDITS_PER_CNY = 100
@@ -39,6 +42,29 @@ def _cost_to_credits(cost_amount: float, currency: str | None) -> int:
 # 计费时长合理上限（24 小时），语义单点定义：repo 写入层是全部 backend 落账的最后防线，
 # 超出上限的计费时长视同未提供、回落请求时长，防超大数值写入 DB Integer 列溢出；
 # 解析侧（grok / dashscope extractor）的 clamp 引用同一常量，保持口径一致。
+
+
+class InsufficientCreditsError(Exception):
+    """ç¨æ·ç§¯åä¸è¶³,æ æ³æ£åæ­¤æ¬¡è°ç¨ææ¬ã
+
+    _deduct_credits_for_call å¨ä½é¢ < æ¬æ¬¡æ£åæ¶ä¼ raise æ­¤å¼å¸¸;
+    ä¸å± (media_generator / text_generator) ç except Exception åä¼æè·,
+    å¹¶æ ApiCall æ¹åä¸º status=failed + error_message,å®ç°ä»»å¡ç»æ­¢ã
+    åæ¶æ¬å¼å¸¸ä¼åå¨ _deduct_credits_for_call ååä¸æ¡ status=failed ç
+    Transaction çç,ä¾ finance page å±ç¤ºåå¯¹è´¦ã
+    """
+
+    def __init__(self, user_id: int, available: int, required: int, *, call_id: int, currency=None):
+        self.user_id = user_id
+        self.available = available
+        self.required = required
+        self.call_id = call_id
+        self.currency = currency
+        super().__init__(
+            f"ç§¯åä¸è¶³: user_id=" + str(user_id)
+            + " å½å " + str(available) + " ç§¯å, æ¬æ¬¡é " + str(required) + " ç§¯å"
+            + " (call_id=" + str(call_id) + ", currency=" + str(currency) + ")"
+        )
 MAX_BILLED_DURATION_SECONDS = 86400
 
 
@@ -250,19 +276,17 @@ class UsageRepository(BaseRepository):
         if affected > 0:
             await self.session.commit()
             # resume 路径:仅在真正翻 status 成功时扣积分 (affected>0 守卫 + status=success)
+            # 异常直接冒泡 (与 finish_call 路径同语义)
             if status == "success" and final_cost_amount > 0:
-                try:
-                    await self._deduct_credits_for_call(
-                        call_id=call_id,
-                        user_id=row.user_id,
-                        cost_amount=final_cost_amount,
-                        currency=final_currency,
-                        call_type=row.call_type,
-                        provider=row.provider,
-                        model=row.model,
-                    )
-                except Exception as e:
-                    logger.exception("扣积分失败 finalize call_id=%s cost=%s: %s", call_id, final_cost_amount, e)
+                await self._deduct_credits_for_call(
+                    call_id=call_id,
+                    user_id=row.user_id,
+                    cost_amount=final_cost_amount,
+                    currency=final_currency,
+                    call_type=row.call_type,
+                    provider=row.provider,
+                    model=row.model,
+                )
         return affected
 
     async def _deduct_credits_for_call(
@@ -306,6 +330,34 @@ class UsageRepository(BaseRepository):
             return 0
 
         credits_before = user.credits or 0
+
+        # ä½é¢æ£æ¥:ç§¯åä¸è¶³ -> åä¸æ¡ failed transaction çç + raise
+        # (ä¸å± except åä¼æè·å¹¶æ ApiCall æ¹ä¸º status=failed, ä»»å¡ç»æ­¢)
+        if credits_before < credits:
+            tail = ' '.join(x for x in (call_type, provider, model) if x)
+            desc = "ç§¯åä¸è¶³,ä»»å¡ç»æ­¢: éè¦ " + str(credits) + ", å½å " + str(credits_before)
+            if tail:
+                desc = desc + ' ' + tail[:200]
+            self.session.add(
+                Transaction(
+                    user_id=user_id,
+                    type="consumption",
+                    amount=0,
+                    credits_before=credits_before,
+                    credits_after=credits_before,
+                    description=desc[:255],
+                    trade_no=trade_no,
+                    status="failed",
+                )
+            )
+            await self.session.commit()
+            logger.warning(
+                "ç¨æ· %s ç§¯åä¸è¶³: å½å %s, æ¬æ¬¡é %s (call_id=%s cost=%s %s)",
+                user_id, credits_before, credits, call_id, cost_amount, currency,
+            )
+            raise InsufficientCreditsError(
+                user_id, credits_before, credits, call_id=call_id, currency=currency
+            )
         credits_after = credits_before - credits
         user.credits = credits_after
 
@@ -460,20 +512,19 @@ class UsageRepository(BaseRepository):
         await self.session.commit()
 
         # 仅成功的调用扣积分 (失败不计费,符合 cost_amount 口径)
+        # 余额不足时 InsufficientCreditsError 必须冒泡,让上层 (media_generator) 的 except
+        # 块把 ApiCall 改为 status=failed,实现"任务终止"。其他扣减异常 (DB 等) 也冒泡,
+        # 由上层处理 (任务标记 failed) — 不在 repo 层静默吞掉避免 ApiCall 状态不一致。
         if status == "success" and final_cost_amount > 0:
-            try:
-                await self._deduct_credits_for_call(
-                    call_id=call_id,
-                    user_id=row.user_id,
-                    cost_amount=final_cost_amount,
-                    currency=final_currency,
-                    call_type=row.call_type,
-                    provider=row.provider,
-                    model=row.model,
-                )
-            except Exception as e:
-                # 扣积分失败不应影响主流程,只记日志 (ApiCall 已经成功记账)
-                logger.exception("扣积分失败 call_id=%s cost=%s: %s", call_id, final_cost_amount, e)
+            await self._deduct_credits_for_call(
+                call_id=call_id,
+                user_id=row.user_id,
+                cost_amount=final_cost_amount,
+                currency=final_currency,
+                call_type=row.call_type,
+                provider=row.provider,
+                model=row.model,
+            )
 
     @staticmethod
     def _build_filters(
