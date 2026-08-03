@@ -211,7 +211,7 @@ class WeChatPayService:
         associated_data = resource.get("associated_data", "")
 
         ciphertext = base64.b64decode(encrypted_data)
-        nonce_bytes = nonce.encode()
+        nonce_bytes = nonce.encode() if isinstance(nonce, str) else nonce
         associated_data_bytes = associated_data.encode()
 
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM

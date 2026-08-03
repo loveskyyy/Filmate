@@ -29,6 +29,8 @@ export function FinancePage() {
   const [page, setPage] = useState(1);
   const [credits, setCredits] = useState(0);
   const [showRecharge, setShowRecharge] = useState(false);
+  // 弹窗关闭后,触发交易记录重新拉取(确保充值到账后立刻显示)
+  const [txRefreshTick, setTxRefreshTick] = useState(0);
   const [rechargeAmount, setRechargeAmount] = useState("");
   const [recharging, setRecharging] = useState(false);
   const [toast, setToast] = useState<{
@@ -49,6 +51,7 @@ export function FinancePage() {
             setQrCodeUrl(null);
             setRechargeAmount("");
             setShowRecharge(false);
+            setTxRefreshTick((x) => x + 1);  // 触发交易记录刷新
             setInitialCredits(0);
             setToast({ message: "充值成功", type: "success" });
           }
@@ -69,7 +72,7 @@ export function FinancePage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [page]);
+  }, [page, txRefreshTick]);
 
   const handleRecharge = async () => {
     const amount = parseFloat(rechargeAmount);
@@ -289,6 +292,7 @@ export function FinancePage() {
                   <button
                     onClick={() => {
                       setShowRecharge(false);
+                      setTxRefreshTick((x) => x + 1);  // 触发交易记录刷新
                       setQrCodeUrl(null);
                       setRechargeAmount("");
                     }}
@@ -319,6 +323,7 @@ export function FinancePage() {
                       setQrCodeUrl(null);
                       setRechargeAmount("");
                       setShowRecharge(false);
+                      setTxRefreshTick((x) => x + 1);  // 触发交易记录刷新
                     }}
                     className="text-text-3 hover:text-text"
                   >
@@ -343,6 +348,7 @@ export function FinancePage() {
                       setQrCodeUrl(null);
                       setRechargeAmount("");
                       setShowRecharge(false);
+                      setTxRefreshTick((x) => x + 1);  // 触发交易记录刷新
                     }}
                     className="flex-1 rounded-lg border border-hairline py-3 transition-colors hover:bg-bg-2"
                   >
@@ -353,6 +359,7 @@ export function FinancePage() {
                       setQrCodeUrl(null);
                       setRechargeAmount("");
                       setShowRecharge(false);
+                      setTxRefreshTick((x) => x + 1);  // 触发交易记录刷新
                     }}
                     className="btn-primary flex-1"
                   >

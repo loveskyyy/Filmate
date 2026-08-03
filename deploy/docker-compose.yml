@@ -1,5 +1,5 @@
 services:
-  arcreel:
+  new-filmate:
     # 本地构建跑最新代码(用 ../Dockerfile build)。
     # 上游镜像 ghcr.io/arcreel/arcreel:latest 可能与本地代码不同步,
     # 启动会因 schema 不匹配而崩,改用 build 才能反映仓库当前状态。
@@ -26,6 +26,7 @@ services:
       - ./projects:/app/projects
       - ./logs:/app/logs
       - ./vertex_keys:/app/vertex_keys
+      - /home/new_ai/Filmate/cert:/app/cert
       - ./claude_data:/root/.claude
     restart: unless-stopped
     healthcheck:
