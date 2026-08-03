@@ -11,8 +11,30 @@ from lib.cost_calculator import cost_calculator
 from lib.custom_provider import is_custom_provider, parse_provider_id
 from lib.db.base import DEFAULT_USER_ID, dt_to_iso, utc_now
 from lib.db.models.api_call import ApiCall
+from lib.db.models.transaction import Transaction
+from lib.db.models.user import User
 from lib.db.repositories.base import BaseRepository, rowcount
 from lib.providers import PROVIDER_GEMINI, CallType
+
+# 积分扣减换算常量
+# 1 CNY = 100 积分 (与微信充值 1 元 = 100 积分口径一致)
+CREDITS_PER_CNY = 100
+# 1 USD ≈ 7 CNY (粗略换算;实际汇率可后续接配置)
+USD_TO_CNY_RATE = 7.0
+
+
+def _cost_to_credits(cost_amount: float, currency: str | None) -> int:
+    """把供应商 cost 换算成积分。"""
+    if cost_amount <= 0:
+        return 0
+    cur = (currency or "USD").upper()
+    if cur == "CNY":
+        return int(cost_amount * CREDITS_PER_CNY)
+    if cur == "USD":
+        return int(cost_amount * USD_TO_CNY_RATE * CREDITS_PER_CNY)
+    # 未知币种按 CNY 兜底
+    return int(cost_amount * CREDITS_PER_CNY)
+
 
 # 计费时长合理上限（24 小时），语义单点定义：repo 写入层是全部 backend 落账的最后防线，
 # 超出上限的计费时长视同未提供、回落请求时长，防超大数值写入 DB Integer 列溢出；
@@ -227,7 +249,86 @@ class UsageRepository(BaseRepository):
         affected = rowcount(result)
         if affected > 0:
             await self.session.commit()
+            # resume 路径:仅在真正翻 status 成功时扣积分 (affected>0 守卫 + status=success)
+            if status == "success" and final_cost_amount > 0:
+                try:
+                    await self._deduct_credits_for_call(
+                        call_id=call_id,
+                        user_id=row.user_id,
+                        cost_amount=final_cost_amount,
+                        currency=final_currency,
+                        call_type=row.call_type,
+                        provider=row.provider,
+                        model=row.model,
+                    )
+                except Exception as e:
+                    logger.exception("扣积分失败 finalize call_id=%s cost=%s: %s", call_id, final_cost_amount, e)
         return affected
+
+    async def _deduct_credits_for_call(
+        self,
+        *,
+        call_id: int,
+        user_id: int,
+        cost_amount: float,
+        currency: str | None,
+        call_type: str | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+    ) -> int:
+        """根据 cost 扣减用户积分,并写一条 consumption 交易记录。
+
+        幂等:用 trade_no = "C<call_id>" 作 unique key,同一次 API call 不会重复扣。
+        cost_amount <= 0 直接返回。
+        扣减允许为负 (按 design: 缺积分不阻断,走后续充值补回)。
+
+        Returns: 实际扣减的积分数 (0 表示没扣)。
+        """
+        credits = _cost_to_credits(cost_amount, currency)
+        if credits <= 0:
+            return 0
+
+        # 幂等:已存在 C<call_id> 的 transaction 就跳过 (即使 ApiCall 被多次 finish_call 也不会重复扣)
+        trade_no = "C" + str(call_id)
+        existing = await self.session.execute(
+            select(Transaction).where(Transaction.trade_no == trade_no)
+        )
+        if existing.scalar_one_or_none() is not None:
+            return 0
+
+        # 锁 user 行 (防止并发 finish_call 时双重扣)
+        result = await self.session.execute(
+            select(User).where(User.id == user_id).with_for_update()
+        )
+        user = result.scalar_one_or_none()
+        if user is None:
+            logger.warning("deduct credits: user_id=%s 不存在,跳过", user_id)
+            return 0
+
+        credits_before = user.credits or 0
+        credits_after = credits_before - credits
+        user.credits = credits_after
+
+        desc = "API 调用扣减"
+        if provider or model:
+            tail = " ".join(x for x in (call_type, provider, model) if x)
+            if tail:
+                desc = desc + " " + tail[:200]
+
+        self.session.add(
+            Transaction(
+                user_id=user_id,
+                type="consumption",
+                amount=-credits,
+                credits_before=credits_before,
+                credits_after=credits_after,
+                description=desc,
+                trade_no=trade_no,
+                status="completed",
+            )
+        )
+        await self.session.commit()
+        return credits
 
     async def finish_call(
         self,
@@ -357,6 +458,22 @@ class UsageRepository(BaseRepository):
             )
         )
         await self.session.commit()
+
+        # 仅成功的调用扣积分 (失败不计费,符合 cost_amount 口径)
+        if status == "success" and final_cost_amount > 0:
+            try:
+                await self._deduct_credits_for_call(
+                    call_id=call_id,
+                    user_id=row.user_id,
+                    cost_amount=final_cost_amount,
+                    currency=final_currency,
+                    call_type=row.call_type,
+                    provider=row.provider,
+                    model=row.model,
+                )
+            except Exception as e:
+                # 扣积分失败不应影响主流程,只记日志 (ApiCall 已经成功记账)
+                logger.exception("扣积分失败 call_id=%s cost=%s: %s", call_id, final_cost_amount, e)
 
     @staticmethod
     def _build_filters(
