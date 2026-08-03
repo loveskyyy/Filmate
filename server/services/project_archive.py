@@ -742,11 +742,25 @@ class ProjectArchiveService:
         # 必填且被校验，两处皆缺（或非字符串脏值）即数据损坏，直接 fail-loud，不静默落 drama。
         # 不用 str(...) 归一：会把缺失的 None 变成字面量 "None" 字符串，既让 reference 分支拿到
         # 假值绕过 fail-loud，又使非 reference 分支的报错语义失真。
-        raw_content_mode = script_payload.get("content_mode") or project_payload.get("content_mode")
+        generation_mode = effective_mode(project=project_payload, episode=script_payload)
+        script_content_mode = script_payload.get("content_mode")
+        project_content_mode = project_payload.get("content_mode")
+
+        # 旧版参考生视频剧本曾错误地把 generation_mode 写入 content_mode。仅当项目级声明
+        # 本身能通过规范解析时才修复，避免用任意脏项目值掩盖数据损坏。
+        if script_content_mode == "reference_video" and isinstance(project_content_mode, str):
+            try:
+                resolve_declared_kind(project_content_mode, generation_mode)
+            except ValueError:
+                pass
+            else:
+                script_payload["content_mode"] = project_content_mode
+                script_changed = True
+
+        raw_content_mode = script_payload.get("content_mode") or project_content_mode
         if not isinstance(raw_content_mode, str):
             raise ValueError(f"未知或缺失 content_mode: {raw_content_mode!r}")
         content_mode = raw_content_mode
-        generation_mode = effective_mode(project=project_payload, episode=script_payload)
 
         # 修复分流按规范解析的骨架种类走，而非 generation_mode：ad 项目 generation_mode
         # 可为 reference_video 但骨架恒为 shots（不含 video_units），按 generation_mode

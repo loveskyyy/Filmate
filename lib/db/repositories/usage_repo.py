@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -16,7 +17,6 @@ from lib.db.models.user import User
 from lib.db.repositories.base import BaseRepository, rowcount
 from lib.providers import PROVIDER_GEMINI, CallType
 
-import logging
 logger = logging.getLogger(__name__)
 
 # 积分扣减换算常量
@@ -45,14 +45,7 @@ def _cost_to_credits(cost_amount: float, currency: str | None) -> int:
 
 
 class InsufficientCreditsError(Exception):
-    """ç¨æ·ç§¯åä¸è¶³,æ æ³æ£åæ­¤æ¬¡è°ç¨ææ¬ã
-
-    _deduct_credits_for_call å¨ä½é¢ < æ¬æ¬¡æ£åæ¶ä¼ raise æ­¤å¼å¸¸;
-    ä¸å± (media_generator / text_generator) ç except Exception åä¼æè·,
-    å¹¶æ ApiCall æ¹åä¸º status=failed + error_message,å®ç°ä»»å¡ç»æ­¢ã
-    åæ¶æ¬å¼å¸¸ä¼åå¨ _deduct_credits_for_call ååä¸æ¡ status=failed ç
-    Transaction çç,ä¾ finance page å±ç¤ºåå¯¹è´¦ã
-    """
+    """用户积分不足，无法承担本次调用成本。"""
 
     def __init__(self, user_id: int, available: int, required: int, *, call_id: int, currency=None):
         self.user_id = user_id
@@ -61,10 +54,11 @@ class InsufficientCreditsError(Exception):
         self.call_id = call_id
         self.currency = currency
         super().__init__(
-            f"ç§¯åä¸è¶³: user_id=" + str(user_id)
-            + " å½å " + str(available) + " ç§¯å, æ¬æ¬¡é " + str(required) + " ç§¯å"
-            + " (call_id=" + str(call_id) + ", currency=" + str(currency) + ")"
+            f"积分不足: user_id={user_id} 当前 {available} 积分, "
+            f"本次需 {required} 积分 (call_id={call_id}, currency={currency})"
         )
+
+
 MAX_BILLED_DURATION_SECONDS = 86400
 
 
@@ -120,6 +114,131 @@ def _row_to_dict(row: ApiCall) -> dict[str, Any]:
 
 
 class UsageRepository(BaseRepository):
+    async def _record_insufficient_credits(
+        self,
+        *,
+        call_id: int,
+        user_id: int,
+        credits_before: int,
+        required: int,
+        cost_amount: float,
+        currency: str | None,
+        call_type: str | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        finalize_pending: bool = False,
+    ) -> None:
+        """记录余额不足痕迹，并在生成前预检失败时结束 pending 调用。"""
+        error = InsufficientCreditsError(
+            user_id,
+            credits_before,
+            required,
+            call_id=call_id,
+            currency=currency,
+        )
+        tail = " ".join(x for x in (call_type, provider, model) if x)
+        description = f"积分不足，任务终止: 需要 {required}, 当前 {credits_before}"
+        if tail:
+            description = f"{description} {tail[:200]}"
+
+        self.session.add(
+            Transaction(
+                user_id=user_id,
+                type="consumption",
+                amount=0,
+                credits_before=credits_before,
+                credits_after=credits_before,
+                description=description[:255],
+                trade_no=f"C{call_id}",
+                status="failed",
+            )
+        )
+
+        if finalize_pending:
+            finished_at = utc_now()
+            await self.session.execute(
+                update(ApiCall)
+                .where(ApiCall.id == call_id, ApiCall.status == "pending")
+                .values(
+                    status="failed",
+                    finished_at=finished_at,
+                    duration_ms=0,
+                    cost_amount=0.0,
+                    currency=currency or "USD",
+                    error_message=str(error)[:500],
+                )
+            )
+
+        await self.session.commit()
+        logger.warning(
+            "用户 %s 积分不足: 当前 %s, 本次需 %s (call_id=%s cost=%s %s)",
+            user_id,
+            credits_before,
+            required,
+            call_id,
+            cost_amount,
+            currency,
+        )
+        raise error
+
+    async def _preflight_credits(self, row: ApiCall) -> None:
+        """在调用供应商前按可用参数估算成本，并拒绝确定无法支付的调用。"""
+        custom_price_input: float | None = None
+        custom_price_output: float | None = None
+        custom_currency: str | None = None
+        if is_custom_provider(row.provider):
+            from lib.db.repositories.custom_provider_repo import CustomProviderRepository
+
+            price_model = await CustomProviderRepository(self.session).get_model_by_ids(
+                parse_provider_id(row.provider),
+                row.model or "",
+            )
+            if price_model:
+                custom_price_input = price_model.price_input
+                custom_price_output = price_model.price_output
+                custom_currency = price_model.currency
+
+        estimated_cost, currency = cost_calculator.calculate_cost(
+            provider=row.provider,
+            call_type=row.call_type,  # type: ignore[arg-type]
+            model=row.model,
+            resolution=row.resolution,
+            aspect_ratio=row.aspect_ratio,
+            duration_seconds=row.duration_seconds,
+            generate_audio=bool(row.generate_audio),
+            custom_price_input=custom_price_input,
+            custom_price_output=custom_price_output,
+            custom_currency=custom_currency,
+        )
+        required = _cost_to_credits(estimated_cost, currency)
+        if required <= 0:
+            return
+
+        # 这里只做生成前的快速拒绝，不把数据库锁跨越供应商网络调用；最终扣减仍在
+        # _deduct_credits_for_call 内锁行并复核，覆盖并发消费和实际成本偏差。
+        result = await self.session.execute(select(User).where(User.id == row.user_id))
+        user = result.scalar_one_or_none()
+        if user is None:
+            logger.warning("preflight credits: user_id=%s 不存在,跳过", row.user_id)
+            return
+
+        credits_before = user.credits or 0
+        if credits_before >= required:
+            return
+
+        await self._record_insufficient_credits(
+            call_id=row.id,
+            user_id=row.user_id,
+            credits_before=credits_before,
+            required=required,
+            cost_amount=estimated_cost,
+            currency=currency,
+            call_type=row.call_type,
+            provider=row.provider,
+            model=row.model,
+            finalize_pending=True,
+        )
+
     async def start_call(
         self,
         *,
@@ -156,6 +275,7 @@ class UsageRepository(BaseRepository):
         self.session.add(row)
         await self.session.commit()
         await self.session.refresh(row)
+        await self._preflight_credits(row)
         return row.id
 
     async def finalize_pending_by_call_id(
@@ -304,7 +424,7 @@ class UsageRepository(BaseRepository):
 
         幂等:用 trade_no = "C<call_id>" 作 unique key,同一次 API call 不会重复扣。
         cost_amount <= 0 直接返回。
-        扣减允许为负 (按 design: 缺积分不阻断,走后续充值补回)。
+        余额不足时记录 failed transaction 并显式抛错；正常媒体调用应已在 start_call 预检。
 
         Returns: 实际扣减的积分数 (0 表示没扣)。
         """
@@ -314,16 +434,12 @@ class UsageRepository(BaseRepository):
 
         # 幂等:已存在 C<call_id> 的 transaction 就跳过 (即使 ApiCall 被多次 finish_call 也不会重复扣)
         trade_no = "C" + str(call_id)
-        existing = await self.session.execute(
-            select(Transaction).where(Transaction.trade_no == trade_no)
-        )
+        existing = await self.session.execute(select(Transaction).where(Transaction.trade_no == trade_no))
         if existing.scalar_one_or_none() is not None:
             return 0
 
         # 锁 user 行 (防止并发 finish_call 时双重扣)
-        result = await self.session.execute(
-            select(User).where(User.id == user_id).with_for_update()
-        )
+        result = await self.session.execute(select(User).where(User.id == user_id).with_for_update())
         user = result.scalar_one_or_none()
         if user is None:
             logger.warning("deduct credits: user_id=%s 不存在,跳过", user_id)
@@ -331,32 +447,17 @@ class UsageRepository(BaseRepository):
 
         credits_before = user.credits or 0
 
-        # ä½é¢æ£æ¥:ç§¯åä¸è¶³ -> åä¸æ¡ failed transaction çç + raise
-        # (ä¸å± except åä¼æè·å¹¶æ ApiCall æ¹ä¸º status=failed, ä»»å¡ç»æ­¢)
         if credits_before < credits:
-            tail = ' '.join(x for x in (call_type, provider, model) if x)
-            desc = "ç§¯åä¸è¶³,ä»»å¡ç»æ­¢: éè¦ " + str(credits) + ", å½å " + str(credits_before)
-            if tail:
-                desc = desc + ' ' + tail[:200]
-            self.session.add(
-                Transaction(
-                    user_id=user_id,
-                    type="consumption",
-                    amount=0,
-                    credits_before=credits_before,
-                    credits_after=credits_before,
-                    description=desc[:255],
-                    trade_no=trade_no,
-                    status="failed",
-                )
-            )
-            await self.session.commit()
-            logger.warning(
-                "ç¨æ· %s ç§¯åä¸è¶³: å½å %s, æ¬æ¬¡é %s (call_id=%s cost=%s %s)",
-                user_id, credits_before, credits, call_id, cost_amount, currency,
-            )
-            raise InsufficientCreditsError(
-                user_id, credits_before, credits, call_id=call_id, currency=currency
+            await self._record_insufficient_credits(
+                call_id=call_id,
+                user_id=user_id,
+                credits_before=credits_before,
+                required=credits,
+                cost_amount=cost_amount,
+                currency=currency,
+                call_type=call_type,
+                provider=provider,
+                model=model,
             )
         credits_after = credits_before - credits
         user.credits = credits_after
@@ -409,6 +510,14 @@ class UsageRepository(BaseRepository):
         result = await self.session.execute(select(ApiCall).where(ApiCall.id == call_id))
         row = result.scalar_one_or_none()
         if not row:
+            return
+        if row.status != "pending":
+            logger.debug(
+                "finish_call 跳过已终态调用: call_id=%s current_status=%s requested_status=%s",
+                call_id,
+                row.status,
+                status,
+            )
             return
 
         # provider 回报的实际计费时长覆盖 start_call 时的请求时长（如 DashScope usage.duration
@@ -486,9 +595,9 @@ class UsageRepository(BaseRepository):
 
         error_truncated = error_message[:500] if error_message else None
 
-        await self.session.execute(
+        update_result = await self.session.execute(
             update(ApiCall)
-            .where(ApiCall.id == call_id)
+            .where(ApiCall.id == call_id, ApiCall.status == "pending")
             .values(
                 status=status,
                 finished_at=finished_at,
@@ -510,11 +619,17 @@ class UsageRepository(BaseRepository):
             )
         )
         await self.session.commit()
+        if rowcount(update_result) == 0:
+            logger.debug(
+                "finish_call 并发收尾未更新已终态调用: call_id=%s requested_status=%s",
+                call_id,
+                status,
+            )
+            return
 
         # 仅成功的调用扣积分 (失败不计费,符合 cost_amount 口径)
-        # 余额不足时 InsufficientCreditsError 必须冒泡,让上层 (media_generator) 的 except
-        # 块把 ApiCall 改为 status=failed,实现"任务终止"。其他扣减异常 (DB 等) 也冒泡,
-        # 由上层处理 (任务标记 failed) — 不在 repo 层静默吞掉避免 ApiCall 状态不一致。
+        # 并发消费或实际成本高于预估时仍可能余额不足：异常必须冒泡让任务显式失败；
+        # ApiCall 已如实记录供应商成功，finish_call 的终态保护会拒绝上层再次覆盖为 failed。
         if status == "success" and final_cost_amount > 0:
             await self._deduct_credits_for_call(
                 call_id=call_id,

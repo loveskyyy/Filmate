@@ -216,6 +216,28 @@ class TestProjectArchiveReferenceVideo:
         assert "video_thumbnail" in assets
         assert assets["status"] == "pending"
 
+    def test_import_repairs_legacy_reference_video_content_mode(self, tmp_path):
+        """旧归档曾把 generation_mode 写进剧本的 content_mode，导入时应回填项目级内容模式。"""
+        pm = ProjectManager(tmp_path / "projects")
+        project_dir = _create_reference_video_project(pm)
+        service = ProjectArchiveService(pm)
+
+        script_path = project_dir / "scripts" / "episode_1.json"
+        script_payload = json.loads(script_path.read_text(encoding="utf-8"))
+        script_payload["content_mode"] = "reference_video"
+        _write_json(script_path, script_payload)
+
+        archive_path = tmp_path / "legacy-reference-content-mode.zip"
+        _make_manual_zip(project_dir, archive_path)
+        shutil.rmtree(project_dir)
+
+        result = service.import_project_archive(archive_path, uploaded_filename="legacy-reference-content-mode.zip")
+
+        imported = json.loads(
+            (pm.get_project_path(result.project_name) / "scripts" / "episode_1.json").read_text(encoding="utf-8")
+        )
+        assert imported["content_mode"] == "narration"
+
     def test_import_adds_placeholder_for_missing_character_reference(self, tmp_path):
         # 与 narration/drama 对齐：references 引用了 project.json 缺失的角色 → 自动补占位定义
         pm = ProjectManager(tmp_path / "projects")

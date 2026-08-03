@@ -1,12 +1,14 @@
 """Tests for UsageRepository."""
 
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from lib.db.base import Base
 from lib.db.models.api_call import ApiCall
-from lib.db.repositories.usage_repo import UsageRepository
+from lib.db.models.transaction import Transaction
+from lib.db.models.user import User
+from lib.db.repositories.usage_repo import InsufficientCreditsError, UsageRepository
 
 
 @pytest.fixture
@@ -47,6 +49,73 @@ class TestUsageRepository:
         calls = await repo.get_calls(project_name="demo")
         assert calls["total"] == 1
         assert calls["items"][0]["status"] == "success"
+
+    async def test_failed_settlement_cannot_overwrite_committed_success(self, db_session):
+        db_session.add(User(id=1, username="settlement-race", credits=100))
+        await db_session.commit()
+
+        repo = UsageRepository(db_session)
+        call_id = await repo.start_call(
+            project_name="demo",
+            call_type="image",
+            model="GPT image2",
+            resolution="1K",
+            provider="filmate",
+            user_id=1,
+        )
+
+        await db_session.execute(update(User).where(User.id == 1).values(credits=43))
+        await db_session.commit()
+
+        with pytest.raises(InsufficientCreditsError) as raised:
+            await repo.finish_call(
+                call_id,
+                status="success",
+                output_path="characters/周衡.png",
+                cost_amount=0.067,
+                currency="USD",
+            )
+
+        await repo.finish_call(
+            call_id,
+            status="failed",
+            error_message=str(raised.value),
+        )
+
+        call = (await repo.get_calls(project_name="demo"))["items"][0]
+        assert call["status"] == "success"
+        assert call["cost_amount"] == pytest.approx(0.067)
+        assert call["output_path"] == "characters/周衡.png"
+
+    async def test_insufficient_settlement_records_readable_failure(self, db_session, caplog):
+        db_session.add(User(id=1, username="readable-credits", credits=100))
+        await db_session.commit()
+
+        repo = UsageRepository(db_session)
+        call_id = await repo.start_call(
+            project_name="demo",
+            call_type="image",
+            model="GPT image2",
+            resolution="1K",
+            provider="filmate",
+            user_id=1,
+        )
+        await db_session.execute(update(User).where(User.id == 1).values(credits=43))
+        await db_session.commit()
+
+        with pytest.raises(InsufficientCreditsError, match="当前 43 积分, 本次需 46 积分"):
+            await repo.finish_call(
+                call_id,
+                status="success",
+                cost_amount=0.067,
+                currency="USD",
+            )
+
+        transaction = (
+            await db_session.execute(select(Transaction).where(Transaction.trade_no == f"C{call_id}"))
+        ).scalar_one()
+        assert transaction.description.startswith("积分不足，任务终止: 需要 46, 当前 43")
+        assert any("用户 1 积分不足: 当前 43, 本次需 46" in message for message in caplog.messages)
 
     async def test_get_stats(self, db_session):
         repo = UsageRepository(db_session)

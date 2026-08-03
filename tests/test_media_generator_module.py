@@ -188,6 +188,46 @@ class TestMediaGenerator:
         assert any(item["status"] == "failed" for item in gen.usage_tracker.finished)
 
     @pytest.mark.asyncio
+    async def test_image_generation_stops_before_backend_when_estimated_credits_insufficient(self, tmp_path):
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        from lib.db.base import Base
+        from lib.db.models.user import User
+        from lib.db.repositories.usage_repo import InsufficientCreditsError
+        from lib.usage_tracker import UsageTracker
+
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            async with factory() as session:
+                session.add(User(id=1, username="low-credits", credits=43))
+                await session.commit()
+
+            gen = _build_generator(tmp_path)
+            gen._user_id = 1
+            gen.usage_tracker = UsageTracker(session_factory=factory)
+
+            with pytest.raises(InsufficientCreditsError, match="积分不足"):
+                await gen.generate_image_async(
+                    prompt="p",
+                    resource_type="characters",
+                    resource_id="周衡",
+                    image_size="1K",
+                )
+
+            assert gen._image_backend.calls == []
+            assert not gen._get_output_path("characters", "周衡").exists()
+            assert gen.versions.add_calls == []
+
+            item = (await gen.usage_tracker.get_calls(project_name="demo"))["items"][0]
+            assert item["status"] == "failed"
+        finally:
+            await engine.dispose()
+
+    @pytest.mark.asyncio
     async def test_generate_video_sync_and_async(self, tmp_path):
         gen = _build_generator(tmp_path)
 

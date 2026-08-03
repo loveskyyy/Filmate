@@ -208,6 +208,7 @@ class TestUsageRepositoryQualityToCostCalculator:
 
         mock_row = MagicMock(spec=ApiCall)
         mock_row.id = 1
+        mock_row.status = "pending"
         mock_row.provider = PROVIDER_OPENAI
         mock_row.call_type = "image"
         mock_row.model = "gpt-image-2"
@@ -248,6 +249,7 @@ class TestUsageRepositoryQualityToCostCalculator:
 
         mock_row = MagicMock(spec=ApiCall)
         mock_row.id = 1
+        mock_row.status = "pending"
         mock_row.provider = PROVIDER_OPENAI
         mock_row.call_type = "image"
         mock_row.model = "gpt-image-2"
