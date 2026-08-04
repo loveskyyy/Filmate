@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import quote
+from urllib.error import HTTPError
 from urllib.request import urlopen
 
 import portalocker
@@ -68,6 +69,15 @@ class MediaStorageError(RuntimeError):
 
 class MediaStorageConfigurationError(MediaStorageError):
     """启用七牛存储但部署配置不完整。"""
+
+
+class MediaStorageNotFoundError(MediaStorageError):
+    """远端对象不存在 (HTTP 404 / NoSuchKey)。
+
+    上层读路径可据此把"资源本就不存在"和"网络/权限/服务异常"区分开：
+    前者通常对应"还没生成"或"已删除"，业务上应当降级（按空处理），
+    不应该让请求整体 5xx。
+    """
 
 
 def _env_flag(value: str | None) -> bool:
@@ -478,8 +488,17 @@ class MediaStorage:
                     try:
                         with tempfile.NamedTemporaryFile(dir=target_path.parent, delete=False) as temp_file:
                             temp_path = Path(temp_file.name)
-                            with urlopen(self.signed_url_for_key(object_key), timeout=30) as response:
-                                shutil.copyfileobj(response, temp_file)
+                            try:
+                                with urlopen(self.signed_url_for_key(object_key), timeout=30) as response:
+                                    shutil.copyfileobj(response, temp_file)
+                            except HTTPError as exc:
+                                # 404 (NoSuchKey / Document not found) 在七牛 Kodo 是
+                                # 资源根本不存在的标准响应——必须和"权限/限速/CDN 异常"区分。
+                                if exc.code == 404:
+                                    raise MediaStorageNotFoundError(
+                                        f"七牛对象不存在: {object_key}"
+                                    ) from exc
+                                raise
                         if not temp_path.stat().st_size:
                             raise MediaStorageError("七牛项目文件下载结果为空")
                         temp_path.replace(target_path)

@@ -5,6 +5,7 @@ from lib.media_storage.service import (
     MediaStorageConfig,
     MediaStorageConfigurationError,
     MediaStorageError,
+    MediaStorageNotFoundError,
     get_media_storage,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "MediaStorageConfig",
     "MediaStorageConfigurationError",
     "MediaStorageError",
+    "MediaStorageNotFoundError",
     "get_media_storage",
 ]

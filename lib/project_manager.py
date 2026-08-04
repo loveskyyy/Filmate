@@ -29,7 +29,7 @@ from lib.db.base import DEFAULT_USER_ID
 from lib.episode_ledger import SOURCE_TEXT_SUFFIXES
 from lib.episode_paths import episode_script_relpath
 from lib.json_io import atomic_write_json, load_json, load_json_or_none
-from lib.media_storage import get_media_storage
+from lib.media_storage import MediaStorageNotFoundError, get_media_storage
 from lib.profile_manifest import (
     VALID_CONTENT_MODES,
     ContentMode,
@@ -1028,10 +1028,15 @@ class ProjectManager:
         real = Path(self._safe_subpath(project_dir / "scripts", filename))
 
         if not real.exists():
-            get_media_storage(self.projects_root).materialize_project_file(
-                project_dir,
-                f"scripts/{filename}",
-            )
+            try:
+                get_media_storage(self.projects_root).materialize_project_file(
+                    project_dir,
+                    f"scripts/{filename}",
+                )
+            except MediaStorageNotFoundError as exc:
+                # 七牛里没有 + 本地也没有 -> 正常的"剧本还没生成"状态，
+                # 按 FileNotFoundError 上抛，让 status_calculator 走兜底（drafts / none）。
+                raise FileNotFoundError(f"剧本文件不存在: {real}") from exc
         if not real.exists():
             raise FileNotFoundError(f"剧本文件不存在: {real}")
 

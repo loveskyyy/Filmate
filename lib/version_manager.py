@@ -11,7 +11,7 @@ import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
-from lib.media_storage import get_media_storage
+from lib.media_storage import MediaStorageNotFoundError, get_media_storage
 from lib.resource_paths import RESOURCE_TYPES as _RESOURCE_TYPES
 from lib.resource_paths import resource_extension
 
@@ -58,11 +58,19 @@ class VersionManager:
             (self.versions_dir / resource_type).mkdir(exist_ok=True)
 
     def _load_versions(self) -> dict:
-        """加载版本元数据"""
-        get_media_storage(self.project_path.parent).materialize_project_file(
-            self.project_path,
-            "versions/versions.json",
-        )
+        """加载版本元数据。
+
+        七牛里没有 ``versions/versions.json`` 与本地缺失等价：新项目 / 尚未提交
+        任何版本的资源 -> 返回按 ``RESOURCE_TYPES`` 初始化的空 dict，避免上层
+        误报 500。
+        """
+        try:
+            get_media_storage(self.project_path.parent).materialize_project_file(
+                self.project_path,
+                "versions/versions.json",
+            )
+        except MediaStorageNotFoundError:
+            return {rt: {} for rt in self.RESOURCE_TYPES}
         if not self.versions_file.exists():
             return {rt: {} for rt in self.RESOURCE_TYPES}
 
