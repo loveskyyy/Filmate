@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from lib.grid.models import GridGeneration
-from lib.media_storage import get_media_storage
+from lib.media_storage import MediaStorageNotFoundError, get_media_storage
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +29,17 @@ class GridManager:
         self._storage.sync_project_paths(self._project_path, [path.relative_to(self._project_path).as_posix()])
 
     def get(self, grid_id: str) -> GridGeneration | None:
-        """Read and return a GridGeneration by id, or None if not found."""
+        """Read and return a GridGeneration by id, or None if not found.
+
+        七牛里没有这条 key (新项目 / 已删除 / 从未上传) 与本地缺失等价：返回
+        None，让上层路由正常返回 404 而不是 500。
+        """
         path = self._path(grid_id)
-        self._storage.materialize_project_file(
-            self._project_path,
-            path.relative_to(self._project_path).as_posix(),
-        )
+        rel = path.relative_to(self._project_path).as_posix()
+        try:
+            self._storage.materialize_project_file(self._project_path, rel)
+        except MediaStorageNotFoundError:
+            return None
         if not path.exists():
             return None
         return GridGeneration.from_dict(json.loads(path.read_text(encoding="utf-8")))

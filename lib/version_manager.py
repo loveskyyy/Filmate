@@ -307,10 +307,14 @@ class VersionManager:
                 raise ValueError(f"版本不存在: {version}")
 
             target_file = self.project_path / target_version["file"]
-            get_media_storage(self.project_path.parent).materialize_project_file(
-                self.project_path,
-                target_version["file"],
-            )
+            try:
+                get_media_storage(self.project_path.parent).materialize_project_file(
+                    self.project_path,
+                    target_version["file"],
+                )
+            except MediaStorageNotFoundError as exc:
+                # 云端没有 + 本地也没有 -> 正常的"目标版本还没生成/已删除"状态
+                raise FileNotFoundError(f"版本文件不存在: {target_file}") from exc
             if not target_file.exists():
                 raise FileNotFoundError(f"版本文件不存在: {target_file}")
 
