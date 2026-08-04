@@ -7,6 +7,7 @@
 import copy
 import errno
 import json
+import tempfile
 import logging
 import os
 import re
@@ -299,8 +300,12 @@ class ProjectManager:
         name = self.normalize_project_name(name)
         if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
             raise ValueError("user_id 必须是正整数")
-        if not (self.projects_root / name / self.PROJECT_FILE).exists():
-            raise FileNotFoundError(f"项目 '{name}' 不存在")
+        # 新建项目仅存七牛,本地无 project.json -- 同时检查云端存在性
+        local_project = self.projects_root / name / self.PROJECT_FILE
+        if not local_project.exists():
+            storage_check = get_media_storage(self.projects_root)
+            if not (storage_check.enabled and storage_check.project_file_exists(name, self.PROJECT_FILE)):
+                raise FileNotFoundError(f"项目 '{name}' 不存在")
         with self._project_owners_lock():
             owners = self._read_project_owners_unlocked()
             owners[name] = user_id
@@ -356,19 +361,31 @@ class ProjectManager:
         if project_dir.exists() or (storage.enabled and storage.project_file_exists(name, self.PROJECT_FILE)):
             raise FileExistsError(f"项目 '{name}' 已存在")
 
-        # 创建所有子目录
-        for subdir in self.SUBDIRS:
-            (project_dir / subdir).mkdir(parents=True, exist_ok=True)
+        # 不再预先创建 SUBDIRS（characters/ scripts/ drafts/ ...）的本地占位。
+        # 项目数据按需 lazy 创建: 第一次写具体文件时由 atomic_write_json 自动建父目录。
+        # 首次 project.json 通过 tempfile 直接上传七牛,本地不存副本（避免与七牛漂移）。
 
-        # 持久化 content_mode 到 project.json，让后续 sync_all_agent_profiles 启动遍历能恢复模式。
-        # server 路径随后会调 create_project_metadata 覆盖为完整版（也含 content_mode）。
         upload_started = False
         try:
-            atomic_write_json(project_dir / self.PROJECT_FILE, {"content_mode": content_mode})
+            # 1) 写 project.json 到 /tmp 临时文件,直接 upload 到七牛
+            initial_payload = {"content_mode": content_mode}
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", prefix=".filmate-", suffix=".json", delete=False
+            ) as tmp:
+                import json as _json
+                _json.dump(initial_payload, tmp, ensure_ascii=False, indent=2)
+                tmp_path = Path(tmp.name)
+            try:
+                object_key = storage.project_object_key(name, self.PROJECT_FILE)
+                storage._upload_file(tmp_path, object_key)
+            finally:
+                tmp_path.unlink(missing_ok=True)
+            upload_started = True
+
+            # 2) 同步 agent profile 到 .claude/ (agent runtime,保留在本地 — agent 进程在容器内要读)
+            #    这一步会创建 project_dir 的子目录 .claude/, 不会创建 SUBDIRS
             self.sync_agent_profile(project_dir, content_mode=content_mode)
             self.set_project_owner(name, user_id)
-            upload_started = True
-            storage.sync_project_paths(project_dir, [self.PROJECT_FILE])
             self._cloud_reconciled_projects.add(name)
         except Exception as create_exc:
             # sync 失败时回滚 project_dir，避免残缺目录阻塞重试（同名 create 撞 FileExistsError）
@@ -571,10 +588,16 @@ class ProjectManager:
                     project_dir,
                     preserve_local_on_failure=not remote_exists,
                 )
-            for subdir in self.SUBDIRS:
-                (project_dir / subdir).mkdir(parents=True, exist_ok=True)
+            # 不再创建 11 个空 SUBDIRS (characters/ scripts/ drafts/ ...)
+            # 这些子目录按需 lazy 创建: 第一次写具体文件时由 atomic_write_json
+            # 自动建父目录。.claude/ 由下面的 sync_agent_profile 创建。
             self.sync_agent_profile(project_dir)
             self._cloud_reconciled_projects.add(name)
+        # 新建项目仅存七牛,本地无 project.json -- 即使 _cloud_reconciled_projects 里有记录,
+        # 第一次访问 get_project_path 时也要 materialize 一次
+        if storage.enabled and not project_file.is_file() and storage.project_file_exists(name, self.PROJECT_FILE):
+            project_dir.mkdir(parents=True, exist_ok=True)
+            storage.materialize_project_data(project_dir)
         if storage.enabled and not project_file.is_file():
             raise FileNotFoundError(f"项目 '{name}' 不存在")
         if not storage.enabled and not project_dir.exists():
@@ -1553,6 +1576,12 @@ class ProjectManager:
         """
         project_file = self._get_project_file_path(project_name)
 
+        # 新建项目仅存七牛,本地无 project.json -- 第一次 load 时从七牛拉
+        if not project_file.exists():
+            get_media_storage(self.projects_root).materialize_project_file(
+                project_file.parent,
+                self.PROJECT_FILE,
+            )
         if not project_file.exists():
             raise FileNotFoundError(f"项目元数据文件不存在: {project_file}")
 
@@ -1662,6 +1691,13 @@ class ProjectManager:
             迁移后的项目元数据字典（与 load_project 返回结构一致）
         """
         project_file = self._get_project_file_path(project_name)
+
+        # 新建项目仅存七牛,本地无 project.json -- mutate 前先从七牛拉
+        if not project_file.exists():
+            get_media_storage(self.projects_root).materialize_project_file(
+                project_file.parent,
+                self.PROJECT_FILE,
+            )
 
         with self._project_lock(project_name):
             with open(project_file, encoding="utf-8") as f:

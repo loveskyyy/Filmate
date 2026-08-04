@@ -24,7 +24,13 @@ def load_json_or_none(path: Path) -> Any | None:
 
 
 def atomic_write_json(path: Path, data: Any) -> None:
-    """同目录 tempfile + os.replace 原子写入 JSON。"""
+    """同目录 tempfile + os.replace 原子写入 JSON。
+
+    Lazy parent dirs: write 路径所属目录若不存在则自动创建。新建项目（仅云端）
+    路径没有预先 ``mkdir`` 时,这里兜底建父目录,使后续 ``save_script`` / ``update_*``
+    仍能在没有本地 subdir 占位的项目上落盘（写完会由 ``sync_project_paths`` 同步到七牛）。
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
