@@ -8,7 +8,8 @@ script_models.py - 剧本数据模型
 
 from typing import Annotated, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
+from typing import Annotated
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, WithJsonSchema, create_model, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 from lib.script_skeleton import resolve_declared_kind
@@ -799,24 +800,67 @@ class ReferenceVideoScript(BaseModel):
 # ============ duration 枚举硬约束（按视频模型能力动态构造剧本 schema） ============
 
 
-def _duration_literal(supported_durations: list[int]) -> object:
-    """把 supported_durations 去重排序后构造成 ``Literal[...]``。
+def _duration_literal(supported_durations: list[int]) -> tuple[list[str], set[int]]:
+    """把 supported_durations 去重排序后构造成 ``(str_values, allowed_ints)``。
 
-    多值在 ``model_json_schema()`` 里渲染为 JSON-schema ``enum``、单值渲染为 ``const``，两者都是硬约束。
-    与 ``ConfigResolver`` 同口径用 ``int(d)`` 归一（见 ``lib/config/resolver.py`` custom 分支）。空集抛 ValueError。
+    早期版本直接 ``return Literal[values]``：Pydantic 把 ``duration_seconds`` 渲染为
+    ``{"type": "integer", "enum": [4, 5, ...]}``。**api.minimaxi.com 的 strict json_schema
+    解析器有 bug**——它的内部 enum 元素类型推断会"传染"：看到 schema 里前一个 enum 是
+    string 元素（如 ``kind: enum [dialogue, voiceover]``），就把后续所有 enum 都推断成
+    string，看到 ``duration_seconds: enum [4, 5, ...]``（number 元素）就报
+    ``Mismatch type string with value number``。在非 strict 模式下，minimax 的 MiniMax-M3
+    模型本身也表现出怪癖：看到 ``enum: [4, 8, 10, 12, 15]`` 这种 schema 后，会把 enum
+    数组原样当作回复输出（例如返回 ``[4, 8, 10, 12, 15]``），被 Instructor 校验拒绝。
+    改用 ``type: string, enum: ["4", "5", ...]`` 双管齐下：strict 模式不拒绝，非 strict
+    模式 LLM 也不会把 enum 当成答案。``BeforeValidator`` 把 string "8" 转成 int 8、
+    ``AfterValidator`` 强制 enum 成员校验，**对调用方零侵入**（拿到的仍是 ``int``）。
     """
-    values = tuple(sorted({int(d) for d in supported_durations}))
-    if not values:
+    int_values = sorted({int(d) for d in supported_durations})
+    if not int_values:
         raise ValueError("supported_durations 为空，无法构造 duration 枚举约束")
-    return Literal[values]
+    str_values = [str(v) for v in int_values]
+    return str_values, set(int_values)
 
 
-def _constrained_duration_item(item_base: type[BaseModel], duration_type: object, description: str) -> type[BaseModel]:
-    """在 ``item_base`` 上把 ``duration_seconds`` 收紧为 ``duration_type``（三工厂共用的字段约束骨架）。"""
+def _coerce_duration_str_to_int(v, _allowed: set[int]):
+    """BeforeValidator：把 LLM 输出的 string "8" 之类转成 int 8；非 string 透传。"""
+    if isinstance(v, str):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            pass
+    return v
+
+
+def _check_duration_in_enum(v, allowed: set[int]):
+    """AfterValidator：转 int 后强制 enum 成员校验（防 WithJsonSchema 只改 schema 不改校验）。"""
+    if v not in allowed:
+        raise ValueError(
+            f"duration_seconds={v!r} not in supported_durations {sorted(allowed)}"
+        )
+    return v
+
+
+def _constrained_duration_item(
+    item_base: type[BaseModel],
+    duration_spec: tuple[list[str], set[int]],
+    description: str,
+) -> type[BaseModel]:
+    """在 ``item_base`` 上把 ``duration_seconds`` 收紧为 string-enum 渲染 + int 校验。
+
+    ``duration_spec`` 是 ``(str_values, allowed_ints)``——``_duration_literal`` 产出。
+    """
+    str_values, allowed = duration_spec
+    annotated_type = Annotated[
+        int,
+        BeforeValidator(lambda v: _coerce_duration_str_to_int(v, allowed)),
+        AfterValidator(lambda v: _check_duration_in_enum(v, allowed)),
+        WithJsonSchema({"type": "string", "enum": str_values}),
+    ]
     return create_model(
         item_base.__name__,
         __base__=item_base,
-        duration_seconds=(duration_type, Field(description=description)),
+        duration_seconds=(annotated_type, Field(description=description)),
     )
 
 
