@@ -11,6 +11,13 @@ PROVIDER_FALLBACK_RESOLUTION: dict[str, str] = {
     "openai": "720p",
     # MiniMax 海螺缺省 768P：1080P 仅 6s，默认落 768P 避免与 10s 档冲突。
     "minimax": "768p",
+    # filmate (sk.aistore777.top) 全部 resolution+seconds 组合仅 720P（从 API 错误信息
+    # 看到：{resolution=720P, seconds=4}; ...；SD2.0 标准 优惠版 / GPT image2 1K 等
+    # 所有 model 都是如此）。model_settings 里没显式设 resolution 的项目（参考生视频
+    # reference_video 路径常见）就走这里 720P，否则 filmate API 返回 400 报
+    # "参数组合不在支持范围内"。需要更精细 1080P 的 model 仍可在
+    # model_settings[provider/model].resolution 显式覆盖。
+    "filmate": "720p",
 }
 
 
