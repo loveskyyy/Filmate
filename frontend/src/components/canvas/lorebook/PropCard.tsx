@@ -108,9 +108,10 @@ export function PropCard({
     onUpdate(name, { description });
   };
 
-  const sheetUrl = prop.prop_sheet
-    ? API.getFileUrl(projectName, prop.prop_sheet, sheetFp)
-    : null;
+  // 优先用后端给的 _url（Qiniu 签名 CDN URL），fallback 走老路径
+  const sheetUrl =
+    prop.prop_sheet_url ||
+    (prop.prop_sheet ? API.getFileUrl(projectName, prop.prop_sheet, sheetFp) : null);
 
   return (
     <div

@@ -108,9 +108,9 @@ export function SceneCard({
     onUpdate(name, { description });
   };
 
-  const sheetUrl = scene.scene_sheet
-    ? API.getFileUrl(projectName, scene.scene_sheet, sheetFp)
-    : null;
+  const sheetUrl =
+    scene.scene_sheet_url ||
+    (scene.scene_sheet ? API.getFileUrl(projectName, scene.scene_sheet, sheetFp) : null);
 
   return (
     <div

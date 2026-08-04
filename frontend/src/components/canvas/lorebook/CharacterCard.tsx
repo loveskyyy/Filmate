@@ -169,13 +169,13 @@ export function CharacterCard({
     }
   };
 
-  const sheetUrl = character.character_sheet
-    ? API.getFileUrl(projectName, character.character_sheet, sheetFp)
-    : null;
+  const sheetUrl =
+    character.character_sheet_url ||
+    (character.character_sheet ? API.getFileUrl(projectName, character.character_sheet, sheetFp) : null);
 
-  const savedReferenceUrl = character.reference_image
-    ? API.getFileUrl(projectName, character.reference_image, referenceFp)
-    : null;
+  const savedReferenceUrl =
+    character.reference_image_url ||
+    (character.reference_image ? API.getFileUrl(projectName, character.reference_image, referenceFp) : null);
 
   const displayedReferenceUrl = referencePreview ?? savedReferenceUrl;
   const hasSavedReference = Boolean(savedReferenceUrl) && !referencePreview;

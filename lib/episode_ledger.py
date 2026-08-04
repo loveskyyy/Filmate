@@ -237,8 +237,17 @@ def _find_in_sources(
 def _has_downstream(project_dir: Path, episode_num: int, entry: Mapping[str, Any]) -> bool:
     """该集是否已有下游产物（剧本 JSON / step1 中间文件；媒体必经剧本，剧本存在即覆盖）。"""
     script_file = entry.get("script_file")
-    if isinstance(script_file, str) and safe_exists(project_dir, script_file):
-        return True
+    if isinstance(script_file, str):
+        # 云端唯一模式：script_file 可能在 Qiniu 不在本地，走 cloud-aware 检查
+        from lib.media_storage import get_media_storage
+        project_name = project_dir.name
+        try:
+            if get_media_storage().project_asset_exists(project_name, script_file):
+                return True
+        except Exception:
+            pass
+        if safe_exists(project_dir, script_file):
+            return True
     if (project_dir / episode_script_relpath(episode_num)).is_file():
         return True
     drafts_dir = episode_drafts_dir(project_dir, episode_num)

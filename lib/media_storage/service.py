@@ -613,6 +613,27 @@ class MediaStorage:
         """检查项目对象是否存在；认证或网络错误必须显式失败。"""
         return self.project_file_info(project_name, relative_path) is not None
 
+    def project_asset_exists(self, project_name: str, relative_path: str | Path) -> bool:
+        """判断一个项目内资产是否已生成且可服务（cloud-aware）。
+
+        Qiniu 启用（生产云端唯一模式）→ 走 Qiniu stat，不依赖本地是否物化。
+        Qiniu 未启用（本地 dev）→ 走本地文件存在性。
+
+        用途：status_calculator 计 characters/scenes/props 已生成数，
+        episode_ledger 判断是否有下游产物，等等。云端唯一模式下，
+        media 文件不会自动物化，旧的 ``safe_exists(project_dir, ...)``
+        会一直返回 False，导致「已生成但显示待生成」误报。
+        """
+        try:
+            normalized = self._normalize_relative(relative_path)
+        except ValueError:
+            return False
+        if self.enabled and self.is_project_relative_path(normalized):
+            return self.project_file_exists(project_name, normalized)
+        from lib.path_safety import safe_exists
+        project_dir = self.data_root / "projects" / self._normalize_project_name(project_name)
+        return safe_exists(project_dir, normalized)
+
     def list_project_names(self) -> list[str]:
         """列出包含 project.json 的远端项目名称。"""
         if not self.enabled:

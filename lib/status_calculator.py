@@ -1,3 +1,4 @@
+from lib.media_storage import get_media_storage
 """
 状态和统计字段的实时计算器
 
@@ -382,20 +383,28 @@ class StatusCalculator:
         """
         project_dir = self.pm.get_project_path(project_name)
 
-        # 角色统计
+        # 角色/场景/道具统计
+        # 云端唯一模式下 media 文件不会自动物化，所以 safe_exists(project_dir) 不可靠；
+        # 改用 cloud-aware 的 project_asset_exists()，Qiniu 启用时走 Qiniu stat。
+        project_name = project.get("name") or project_dir.name
+        storage = get_media_storage()
+
+        def _asset_exists(sheet: str) -> bool:
+            if not sheet:
+                return False
+            return storage.project_asset_exists(project_name, sheet)
+
         chars = project.get("characters", {})
         chars_total = len(chars)
-        chars_done = sum(1 for c in chars.values() if safe_exists(project_dir, c.get("character_sheet", "")))
+        chars_done = sum(1 for c in chars.values() if _asset_exists(c.get("character_sheet", "")))
 
-        # 场景统计
         scenes = project.get("scenes", {})
         scenes_total = len(scenes)
-        scenes_done = sum(1 for s in scenes.values() if safe_exists(project_dir, s.get("scene_sheet", "")))
+        scenes_done = sum(1 for s in scenes.values() if _asset_exists(s.get("scene_sheet", "")))
 
-        # 道具统计
         props = project.get("props", {})
         props_total = len(props)
-        props_done = sum(1 for p in props.values() if safe_exists(project_dir, p.get("prop_sheet", "")))
+        props_done = sum(1 for p in props.values() if _asset_exists(p.get("prop_sheet", "")))
 
         # 每集状态：优先使用预加载数据，否则自行加载
         if _preloaded_episodes_stats is not None:
@@ -432,12 +441,47 @@ class StatusCalculator:
         """
         为项目数据注入所有计算字段（用于详情 API）。
         不修改原始 JSON 文件，仅用于 API 响应。
+
+        同时为每个 *_sheet / reference_image 字段注入对应的 *_url：
+        Qiniu 启用 → 带签名的 CDN URL（浏览器一跳到位）
+        Qiniu 未启用 → 与原 *_sheet 相同的相对路径
+        前端应优先使用 *_url。
         """
         # 计算每集明细（注入到 episode 对象）并收集统计
         episodes_stats = self._build_episodes_stats(project_name, project)
 
         for ep, ep_stats in zip(project.get("episodes", []), episodes_stats):
             ep.update(ep_stats)
+
+        # 注入 sheet / image URL（用于前端直接显示）
+        storage = get_media_storage()
+
+        def _maybe_add_url(entry: dict, path_key: str, url_key: str) -> None:
+            rel = entry.get(path_key)
+            if not rel:
+                return
+            try:
+                entry[url_key] = storage.media_url_for(project_name, rel)
+            except Exception:
+                # 容错：保持原有 *_sheet 字段即可
+                pass
+
+        for entry in (project.get("characters") or {}).values():
+            _maybe_add_url(entry, "character_sheet", "character_sheet_url")
+            _maybe_add_url(entry, "reference_image", "reference_image_url")
+        for entry in (project.get("scenes") or {}).values():
+            _maybe_add_url(entry, "scene_sheet", "scene_sheet_url")
+        for entry in (project.get("props") or {}).values():
+            _maybe_add_url(entry, "prop_sheet", "prop_sheet_url")
+        for entry in (project.get("products") or {}).values():
+            _maybe_add_url(entry, "product_sheet", "product_sheet_url")
+        if project.get("style_image"):
+            try:
+                project["style_image_url"] = storage.media_url_for(
+                    project_name, project["style_image"]
+                )
+            except Exception:
+                pass
 
         # 传入预加载的 episodes_stats，避免 calculate_project_status 重复加载剧本
         project["status"] = self.calculate_project_status(

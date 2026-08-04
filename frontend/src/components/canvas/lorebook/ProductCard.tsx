@@ -157,9 +157,9 @@ export function ProductCard({
     });
   };
 
-  const sheetUrl = product.product_sheet
-    ? API.getFileUrl(projectName, product.product_sheet, sheetFp)
-    : null;
+  const sheetUrl =
+    product.product_sheet_url ||
+    (product.product_sheet ? API.getFileUrl(projectName, product.product_sheet, sheetFp) : null);
 
   return (
     <div
