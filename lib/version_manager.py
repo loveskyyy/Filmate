@@ -120,7 +120,10 @@ class VersionManager:
             for v in resource_data.get("versions", []):
                 version_info = v.copy()
                 version_info["is_current"] = v["version"] == resource_data["current_version"]
-                version_info["file_url"] = f"/api/v1/files/{self.project_path.name}/{v['file']}"
+                storage = get_media_storage(self.project_path.parent)
+                version_info["file_url"] = storage.media_url_for(
+                    self.project_path.name, v["file"]
+                )
                 versions.append(version_info)
 
             return {"current_version": resource_data.get("current_version", 0), "versions": versions}

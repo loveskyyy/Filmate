@@ -31,6 +31,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from lib.media_storage import get_media_storage
+
 if TYPE_CHECKING:
     from lib.project_manager import ProjectManager
 

@@ -1045,9 +1045,11 @@ class API {
     const token = getToken();
     if (!token) return url;
 
+    // 绝对 URL（如后端返回的七牛签名 URL）已自带 Qiniu signature，
+    // 不能再叠 app auth token（会覆盖七牛签名）。
+    if (/^https?:\/\//i.test(url)) return url;
     const parsed = new URL(url, window.location.origin);
     parsed.searchParams.set("token", token);
-    if (/^https?:\/\//i.test(url)) return parsed.toString();
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
   }
 

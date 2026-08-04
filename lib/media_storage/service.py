@@ -106,7 +106,7 @@ class MediaStorageConfig:
     domain: str = ""
     object_prefix: str = "projects"
     upload_token_ttl_seconds: int = 3600
-    download_url_ttl_seconds: int = 900
+    download_url_ttl_seconds: int = 3600
     cache_max_bytes: int = 20 * 1024 * 1024 * 1024
 
     @classmethod
@@ -120,7 +120,7 @@ class MediaStorageConfig:
             domain=os.environ.get("QINIU_DOMAIN", "").strip().rstrip("/"),
             object_prefix=os.environ.get("QINIU_OBJECT_PREFIX", "projects").strip().strip("/"),
             upload_token_ttl_seconds=_env_positive_int("QINIU_UPLOAD_TOKEN_TTL_SECONDS", 3600),
-            download_url_ttl_seconds=_env_positive_int("QINIU_DOWNLOAD_URL_TTL_SECONDS", 900),
+            download_url_ttl_seconds=_env_positive_int("QINIU_DOWNLOAD_URL_TTL_SECONDS", 3600),
             cache_max_bytes=_env_positive_int("QINIU_MEDIA_CACHE_MAX_BYTES", 20 * 1024 * 1024 * 1024),
         )
         if not enabled:
@@ -256,6 +256,19 @@ class MediaStorage:
 
     def signed_project_url(self, project_name: str, relative_path: str | Path) -> str:
         return self.signed_url_for_key(self.project_object_key(project_name, relative_path))
+
+    def media_url_for(self, project_name: str, relative_path: str | Path) -> str:
+        """Return the best URL the browser should use to fetch a project asset.
+
+        Qiniu enabled (production) -> return a signed CDN URL the browser can
+        fetch directly. 1 hop, no proxy.
+        Qiniu disabled (local dev) -> return the local `/api/v1/files/...` proxy
+        URL; the FastAPI endpoint serves the file from local disk.
+        """
+        if self.enabled:
+            return self.signed_project_url(project_name, relative_path)
+        cleaned = str(relative_path).lstrip("/")
+        return f"/api/v1/files/{project_name}/{cleaned}"
 
     def signed_global_url(self, relative_path: str | Path) -> str:
         return self.signed_url_for_key(self.global_object_key(relative_path))

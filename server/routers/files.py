@@ -408,7 +408,7 @@ async def upload_file(
                 "success": True,
                 "filename": filename,
                 "path": relative_path,
-                "url": f"/api/v1/files/{project_name}/{relative_path}",
+                "url": get_media_storage().media_url_for(project_name, relative_path),
             }
 
         return await asyncio.to_thread(_sync)
@@ -513,7 +513,7 @@ async def _handle_source_upload(
         "success": True,
         "filename": result.normalized_path.name,
         "path": relative_path,
-        "url": f"/api/v1/files/{project_name}/{relative_path}",
+        "url": get_media_storage().media_url_for(project_name, relative_path),
         "normalized": True,
         "original_kept": result.raw_path is not None,
         "original_filename": result.original_filename,
@@ -559,7 +559,7 @@ async def list_project_files(project_name: str, _user: CurrentUser, _t: Translat
                         entry = {
                             "name": f.name,
                             "size": f.stat().st_size,
-                            "url": f"/api/v1/files/{project_name}/{subdir}/{f.name}",
+                            "url": get_media_storage().media_url_for(project_name, f"{subdir}/{f.name}"),
                         }
                         if subdir == "source":
                             entry["raw_filename"] = raw_by_stem.get(Path(f.name).stem)
@@ -1040,7 +1040,7 @@ async def upload_style_image(project_name: str, _user: CurrentUser, _t: Translat
             "success": True,
             "style_image": style_filename,
             "style_description": style_description,
-            "url": f"/api/v1/files/{project_name}/{style_filename}",
+            "url": get_media_storage().media_url_for(project_name, style_filename),
         }
 
     except FileNotFoundError:
