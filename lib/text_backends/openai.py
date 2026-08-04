@@ -143,7 +143,7 @@ class OpenAITextBackend:
             response = await self._client.chat.completions.create(**kwargs)
         except Exception as exc:
             if request.response_schema and _is_schema_error(exc):
-                logger.warning(
+                logger.debug(
                     "原生 response_format 失败 (%s)，降级到 Instructor 路径",
                     exc,
                 )
