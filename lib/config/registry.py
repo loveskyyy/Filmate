@@ -1344,6 +1344,9 @@ PROVIDER_REGISTRY: dict[str, ProviderMeta] = {
                 capabilities=["text_to_video", "image_to_video", "seed_control"],
                 supported_durations=list(range(4, 16)),
                 resolutions=["720p"],
+                # Filmate API accepts reference_image(s) URL; 4 matches the
+                # FilmateVideoBackend.video_capabilities ceiling.
+                max_reference_images=4,
             ),
             "SD2.0 标准 优惠版": ModelInfo(
                 display_name="SD2.0 标准 优惠版",
@@ -1351,6 +1354,9 @@ PROVIDER_REGISTRY: dict[str, ProviderMeta] = {
                 capabilities=["text_to_video", "image_to_video", "seed_control"],
                 supported_durations=list(range(4, 16)),
                 resolutions=["720p"],
+                # Filmate API accepts reference_image(s) URL; 4 matches the
+                # FilmateVideoBackend.video_capabilities ceiling.
+                max_reference_images=4,
             ),
         },
     ),
