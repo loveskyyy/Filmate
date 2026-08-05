@@ -302,19 +302,53 @@ class FilmateVideoBackend(VideoBackend):
         return url
 
     def _build_files_url(self, file_path: Path, project_name: str | None = None) -> str | None:
-        """从本地文件路径构建可访问的 URL。
+        """Build a URL the filmate backend can fetch.
 
-        假设项目目录结构为：
-        /app/projects/{project_name}/... 或 /home/Ai/filmate/deploy/projects/{project_name}/...
+        Uses ``media_storage.media_url_for`` to get a signed CDN URL whenever
+        Qiniu is enabled — the URL is public HTTPS, expires in 1h, and points
+        at the actual stored object (``projects_test/...`` key), so filmate
+        can fetch it without any auth.
 
-        通过 FILMATE_FILES_BASE_URL 环境变量或 files_base_url 参数指定文件服务基础 URL。
-
-        Returns:
-            可访问的 URL，如果无法构建则返回 None。
+        Falls back to the legacy ``FILMATE_FILES_BASE_URL`` splice if Qiniu
+        is disabled (local dev).
         """
+        from urllib.parse import quote
+
+        path_str = str(file_path)
+
+        rel_path: str | None = None
+        for pattern in ("/projects/", "/deploy/projects/"):
+            idx = path_str.find(pattern)
+            if idx != -1:
+                rel_path = path_str[idx + len(pattern):]
+                break
+
+        # 1) Qiniu signed CDN URL — works without any auth on the filmate side
+        if rel_path is not None:
+            try:
+                from lib.media_storage import get_media_storage
+
+                storage = get_media_storage()
+                if storage.enabled:
+                    proj = project_name or rel_path.split("/", 1)[0]
+                    return storage.media_url_for(proj, rel_path)
+            except Exception as exc:  # pragma: no cover
+                logger.debug("media_storage URL build failed, fallback: %s", exc)
+
+        # 2) Legacy FILMATE_FILES_BASE_URL splice (local dev only)
         if not self._files_base_url:
-            logger.debug("未配置 FILMATE_FILES_BASE_URL，无法构建文件 URL")
+            logger.debug(
+                "FILMATE_FILES_BASE_URL unset and media_storage disabled; cannot build URL: %s",
+                path_str,
+            )
             return None
+        if rel_path is None:
+            logger.warning("Cannot extract project-relative path from: %s", path_str)
+            return None
+        encoded_path = quote(rel_path, safe="/")
+        url = f"{self._files_base_url.rstrip('/')}/files/{encoded_path}"
+        logger.info("Built file URL: path=%s -> url=%s", path_str, url)
+        return url
 
         # 从文件路径中提取相对于项目目录的路径
         # 例如：/home/Ai/filmate/deploy/projects/proj-9966a4b0/reference_videos/temp/xxx.jpg
