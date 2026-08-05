@@ -641,6 +641,11 @@ class ProjectEventService:
                 generation_mode = effective_mode(project=project, episode=episode)
                 scripts[script_path.name] = self._normalize_script_snapshot(script, generation_mode=generation_mode)
 
+        # Include per-file mtimes in the snapshot so that regenerating an asset
+        # which keeps the same relative path (overwrite) still produces a new
+        # fingerprint and triggers the SSE "changes" event. The field uses an
+        # underscore prefix to mark it as internal to the snapshot serializer
+        # (consumers should use the /project asset_fingerprints field instead).
         return {
             "project": {
                 "meta": project_meta,
@@ -651,7 +656,64 @@ class ProjectEventService:
                 "episodes": episodes,
             },
             "scripts": scripts,
+            "_media_mtimes": self._collect_media_mtimes(project_name),
         }
+
+    # Subdirs that may contain media we care about for SSE change detection.
+    # Mirrors ``lib.asset_fingerprints._MEDIA_SUBDIRS``; keep in sync if the
+    # canonical list changes.  We intentionally only list asset directories
+    # (not ``versions/``) so deleting a version doesn't churn the fingerprint.
+    _SNAPSHOT_MEDIA_SUBDIRS = (
+        "characters",
+        "scenes",
+        "props",
+        "products",
+        "storyboards",
+        "videos",
+        "thumbnails",
+        "grids",
+        "reference_videos",
+    )
+
+    def _collect_media_mtimes(self, project_name: str) -> dict[str, int]:
+        """Collect {rel_path: mtime_ns} for project media files.
+
+        Read-time helper used by ``_build_snapshot`` so that snapshot fingerprint
+        reflects actual file content changes (regen with same path) and not just
+        JSON field values. Cost is bounded by the number of media files in the
+        project (<200 typical) and is single ``iterdir`` per subdir.
+        """
+        try:
+            project_dir = self.pm.get_project_path(project_name)
+        except FileNotFoundError:
+            return {}
+        mtimes: dict[str, int] = {}
+        for sub in self._SNAPSHOT_MEDIA_SUBDIRS:
+            sub_dir = project_dir / sub
+            if not sub_dir.is_dir():
+                continue
+            for f in sub_dir.iterdir():
+                if f.is_file():
+                    try:
+                        mtimes[f"{sub}/{f.name}"] = f.stat().st_mtime_ns
+                    except OSError:
+                        continue
+                elif f.is_dir() and f.name != "versions":
+                    sub_prefix = f"{sub}/{f.name}"
+                    for sub_f in f.iterdir():
+                        if sub_f.is_file():
+                            try:
+                                mtimes[f"{sub_prefix}/{sub_f.name}"] = sub_f.stat().st_mtime_ns
+                            except OSError:
+                                continue
+        # root-level media (style_reference.png, etc.)
+        try:
+            for f in project_dir.iterdir():
+                if f.is_file() and f.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".mp4"}:
+                    mtimes[f.name] = f.stat().st_mtime_ns
+        except OSError:
+            pass
+        return mtimes
 
     def _normalize_script_snapshot(
         self, script: dict[str, Any], *, generation_mode: str | None = None
