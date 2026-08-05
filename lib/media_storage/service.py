@@ -24,6 +24,10 @@ from urllib.parse import quote
 from urllib.error import HTTPError
 from urllib.request import urlopen
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import portalocker
 
 from lib.app_data_dir import app_data_dir
@@ -274,7 +278,14 @@ class MediaStorage:
         return self.signed_url_for_key(self.global_object_key(relative_path))
 
     def _upload_file(self, source_path: Path, object_key: str) -> None:
-        """使用官方 SDK 上传，并以七牛 ETag 验证远端内容。"""
+        """使用官方 SDK 上传，并以七牛 ETag 验证远端内容。
+
+        大文件走 SDK 分片（4MB/片），默认单片 60s 超时——大文件单次上传可能跨多片，
+        任一片超时或网络抖动都导致整体失败。我们包 3 次重试（指数退避 1s/2s/4s）以
+        防伴随网络抖动；raise 前打印 status_code + body + elapsed，避免之前一个推不
+        动的 generic "MediaStorageError" 把真正原因吞掉。
+        """
+        import time as _time
         from qiniu import etag, put_file_v2
 
         token = self._qiniu_auth().upload_token(
@@ -284,18 +295,52 @@ class MediaStorage:
             policy={"returnBody": '{"key":"$(key)","hash":"$(etag)"}'},
         )
         mime_type = mimetypes.guess_type(source_path.name)[0] or "application/octet-stream"
-        result, info = put_file_v2(
-            token,
-            object_key,
-            str(source_path),
-            mime_type=mime_type,
-            version="v2",
-            bucket_name=self.config.bucket,
-        )
-        if not result or getattr(info, "status_code", 0) != 200:
-            raise MediaStorageError("七牛项目文件上传失败")
-        if result.get("key") != object_key or result.get("hash") != etag(str(source_path)):
-            raise MediaStorageError("七牛项目文件上传校验失败")
+        # 实测发现阿里云 ECS -> 七牛华东的上行带宽在某些时段被卡到 ~50KB/s，5.7MB 视频文件
+        # 单次上传需要 120s+。qiniu SDK 默认 connection_timeout=30s + 单片 60s 早早就 timeout
+        # 了。三步修复：
+        # 1) qiniu.config.set_default 把 connection_timeout 拉到 600s（只在本进程内生效，
+        #    副作用小）
+        # 2) put_file_v2 显式传 part_size=4MB（qiniu.etag() 默认 4MB，必须一致才能校验通过）
+        # 3) 重试间隔 5/15/45s，最多 3 次（共 65s 等待 + 多次 600s 尝试 = 充足）
+        from qiniu import config as _qiniu_config, put_file_v2
+        _qiniu_config.set_default(connection_timeout=600)
+        last_exc: Exception | None = None
+        for attempt in range(1, 4):
+            try:
+                t0 = _time.monotonic()
+                result, info = put_file_v2(
+                    token,
+                    object_key,
+                    str(source_path),
+                    mime_type=mime_type,
+                    version="v2",
+                    bucket_name=self.config.bucket,
+                    part_size=4 * 1024 * 1024,  # 4MB, MUST match qiniu.etag() default
+                )
+                elapsed = _time.monotonic() - t0
+                sc = getattr(info, "status_code", 0)
+                body = (getattr(info, "text_body", None) or "")[:400]
+                req_id = getattr(info, "req_id", None)
+                if not result or sc != 200:
+                    raise MediaStorageError(
+                        f"七牛上传失败: status={sc} req_id={req_id} elapsed={elapsed:.1f}s "
+                        f"object_key={object_key} body={body}"
+                    )
+                if result.get("key") != object_key or result.get("hash") != etag(str(source_path)):
+                    raise MediaStorageError(
+                        f"七牛上传校验失败: object_key={object_key} "
+                        f"result_key={result.get('key')!r} result_hash={result.get('hash')!r}"
+                    )
+                return
+            except Exception as exc:
+                last_exc = exc
+                logger.warning(
+                    "七牛上传尝试 %d/3 失败: object_key=%s exc=%s",
+                    attempt, object_key, exc,
+                )
+                if attempt < 3:
+                    _time.sleep(5 * (3 ** (attempt - 1)))  # 5/15/45s
+        raise last_exc if last_exc else MediaStorageError("七牛项目文件上传失败")
 
     def sync_project_paths(
         self,
@@ -322,12 +367,17 @@ class MediaStorage:
             except Exception as upload_exc:
                 if preserve_local_on_failure:
                     raise
+                # 清晰定位：上传失败时只检查远端是否已存在同名对象。
+                # - 远端不在 → 不动本地（不要 unlink、不要 materialize），让未来后台 retry
+                #   worker / 用户手动触发重试能复用这个本地文件，避免云端重新计费生成
+                #   （如 filmate 视频生成价格高）。这样 E1U01 那种"Filmate 后台已经生
+                #   成但上传到七牛失败"的场景，本地源文件不会被吞掉，retry 一次就能救
+                #   回，避免双重扣费。
+                # - 远端存在 → 强制走一次 materialize 以保证本地与云端一致（原来的行为）。
                 rollback_exc: Exception | None = None
                 try:
                     remote_info = self.project_file_info(object_project_name, normalized)
-                    if remote_info is None:
-                        source_path.unlink(missing_ok=True)
-                    else:
+                    if remote_info is not None:
                         self._materialize(
                             source_path,
                             object_key,
@@ -337,7 +387,7 @@ class MediaStorage:
                 except Exception as exc:
                     rollback_exc = exc
                 if rollback_exc is not None:
-                    upload_exc.add_note(f"本地工作副本回滚失败: {type(rollback_exc).__name__}")
+                    upload_exc.add_note(f"本地与云端一致化失败: {type(rollback_exc).__name__}")
                 raise upload_exc
             if self.is_media_relative_path(normalized):
                 synced_paths.append(source_path)
