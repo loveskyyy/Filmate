@@ -744,20 +744,33 @@ class MediaStorage:
                     raise MediaStorageError(f"七牛删除响应类型异常: type={type(batch_response).__name__}")
                 result, info = batch_response
                 sc = getattr(info, "status_code", 0)
-                body = (getattr(info, "text_body", None) or "")[:400]
-                # qiniu batch API: 200 = 全部成功；298 = 部分失败（response body 仍
-                # 是 list，逐项 code 决定成败）；其它 status_code 才是真错误。
-                if sc not in (200, 298) or not isinstance(result, list):
+                raw_body = getattr(info, "text_body", None) or ""
+                # qiniu 7.x BucketManager.batch() quirk: HTTP 200 时 result 是 list (each
+                # item {code, data})，但 HTTP 298 时 result 是 None，per-key 状态被塞进
+                # info.text_body 的 JSON 字符串里。这是 SDK 内部 retrier 在 `resp.ok() and ret`
+                # 处不返回，最后 attempt.result 落到 (None, info)——见 qiniu/services/storage/
+                # bucket.py: __server_do_with_retrier。统一从 raw_body 解析。
+                if sc not in (200, 298):
                     raise MediaStorageError(
-                        f"七牛删除失败: status={sc} body={body} keys={object_keys_batch}"
+                        f"七牛删除失败: status={sc} body={raw_body[:400]} keys={object_keys_batch}"
                     )
-                if len(result) != len(object_keys_batch):
+                if isinstance(result, list):
+                    items = result
+                else:
+                    try:
+                        items = json.loads(raw_body) if raw_body else []
+                    except Exception as exc:
+                        raise MediaStorageError(
+                            f"七牛删除响应无法解析: status={sc} body={raw_body[:400]} exc={exc}"
+                        ) from exc
+                if not isinstance(items, list) or len(items) != len(object_keys_batch):
                     raise MediaStorageError(
-                        f"七牛删除响应数对不上: 期望 {len(object_keys_batch)} 实际 {len(result)} keys={object_keys_batch}"
+                        f"七牛删除响应数对不上: 期望 {len(object_keys_batch)} 实际 "
+                        f"{len(items) if isinstance(items, list) else 'N/A'} keys={object_keys_batch}"
                     )
                 # 单项 code 检查：200 = 删除成功，612 = 对象不存在（视为成功，幂等）。
                 # 其它 code 记录详细错误（key + code + data）方便定位。
-                bad_items = [item for item in result
+                bad_items = [item for item in items
                              if not isinstance(item, dict) or item.get("code") not in {200, 612}]
                 if bad_items:
                     raise MediaStorageError(
