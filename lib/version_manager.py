@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from lib.media_storage import MediaStorageNotFoundError, get_media_storage
+from lib.project_change_hints import emit_project_change_hint
 from lib.resource_paths import RESOURCE_TYPES as _RESOURCE_TYPES
 from lib.resource_paths import resource_extension
 
@@ -208,6 +209,18 @@ class VersionManager:
             resource_data["current_version"] = new_version
 
             self._save_versions(data)
+            # Notify SSE subscribers (events/stream) that versions.json changed so the
+            # frontend can refresh the gallery/preview without polling. Without this,
+            # generated videos/images only show up on the next manual refresh.
+            try:
+                emit_project_change_hint(
+                    self.project_path.name,
+                    changed_paths=["versions/versions.json"],
+                )
+            except Exception:
+                # Listener errors must not break add_version; log only.
+                import logging
+                logging.getLogger(__name__).exception("emit_project_change_hint 失败（不影响 add_version）")
             return new_version
 
     def backup_current(
