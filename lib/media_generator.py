@@ -697,11 +697,17 @@ class MediaGenerator:
                 end_arg = compressed[end_spec_idx].path if end_spec_idx is not None else None
                 # 数组参考图恒在 specs 末段（append start/end 之后），故 [ref_start_idx:] 精确取它们；
                 # 无可压缩数组项时回落原 actual_reference_images（保留 None / [] 语义）。
-                ref_arg = (
-                    [c.path for c in compressed[ref_start_idx:]]
-                    if ref_start_idx is not None
-                    else actual_reference_images
-                )
+                # filmate (and other ARRAY-role backends) need a URL the upstream
+                # provider can fetch. The compressed payload writes reference images
+                # to a temp dir like /tmp/refcomp-...; that path is not addressable,
+                # so the signed-URL resolver in filmate.py cannot map it back to a
+                # Qiniu object key. Use the ORIGINAL project paths for ARRAY slots
+                # when we have any (they live at projects_test/<project>/... and the
+                # signed-URL builder can find them).
+                if ref_start_idx is not None and actual_reference_images:
+                    ref_arg = list(actual_reference_images)
+                else:
+                    ref_arg = actual_reference_images
                 return video_backend.generate(
                     VideoGenerationRequest(
                         prompt=prompt,

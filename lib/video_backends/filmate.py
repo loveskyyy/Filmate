@@ -330,8 +330,17 @@ class FilmateVideoBackend(VideoBackend):
 
                 storage = get_media_storage()
                 if storage.enabled:
+                    # rel_path is project-prefixed (e.g. "proj-c72de49d/scenes/x.png")
+                    # but media_url_for expects the project-INTERNAL relative path
+                    # (e.g. "scenes/x.png"). If project_name was passed in, drop the
+                    # project prefix so we don't end up with the project name twice
+                    # in the final URL.
                     proj = project_name or rel_path.split("/", 1)[0]
-                    return storage.media_url_for(proj, rel_path)
+                    if project_name and rel_path.startswith(project_name + "/"):
+                        internal_rel = rel_path[len(project_name) + 1:]
+                    else:
+                        internal_rel = rel_path
+                    return storage.media_url_for(proj, internal_rel)
             except Exception as exc:  # pragma: no cover
                 logger.debug("media_storage URL build failed, fallback: %s", exc)
 
