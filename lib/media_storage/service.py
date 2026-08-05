@@ -741,19 +741,32 @@ class MediaStorage:
                 object_keys_batch = object_keys[start : start + _BATCH_DELETE_MAX_KEYS]
                 batch_response: Any = manager.batch(build_batch_delete(self.config.bucket, object_keys_batch))
                 if not isinstance(batch_response, tuple) or len(batch_response) != 2:
-                    raise MediaStorageError("七牛项目文件删除失败")
+                    raise MediaStorageError(f"七牛删除响应类型异常: type={type(batch_response).__name__}")
                 result, info = batch_response
-                if getattr(info, "status_code", 0) != 200 or not isinstance(result, list):
-                    raise MediaStorageError("七牛项目文件删除失败")
+                sc = getattr(info, "status_code", 0)
+                body = (getattr(info, "text_body", None) or "")[:400]
+                # qiniu batch API: 200 = 全部成功；298 = 部分失败（response body 仍
+                # 是 list，逐项 code 决定成败）；其它 status_code 才是真错误。
+                if sc not in (200, 298) or not isinstance(result, list):
+                    raise MediaStorageError(
+                        f"七牛删除失败: status={sc} body={body} keys={object_keys_batch}"
+                    )
                 if len(result) != len(object_keys_batch):
-                    raise MediaStorageError("七牛项目文件删除响应无效")
-                for item in result:
-                    if not isinstance(item, dict) or item.get("code") not in {200, 612}:
-                        raise MediaStorageError("七牛项目文件删除失败")
+                    raise MediaStorageError(
+                        f"七牛删除响应数对不上: 期望 {len(object_keys_batch)} 实际 {len(result)} keys={object_keys_batch}"
+                    )
+                # 单项 code 检查：200 = 删除成功，612 = 对象不存在（视为成功，幂等）。
+                # 其它 code 记录详细错误（key + code + data）方便定位。
+                bad_items = [item for item in result
+                             if not isinstance(item, dict) or item.get("code") not in {200, 612}]
+                if bad_items:
+                    raise MediaStorageError(
+                        f"七牛删除部分失败: bad={bad_items} keys={object_keys_batch}"
+                    )
         except MediaStorageError:
             raise
         except Exception as exc:
-            raise MediaStorageError("七牛项目文件删除失败") from exc
+            raise MediaStorageError(f"七牛删除异常: {type(exc).__name__}: {exc}") from exc
 
     def delete_project_paths(self, project_name: str, relative_paths: Iterable[str | Path]) -> None:
         """精确删除项目对象；调用方应仅在成功后删除本地工作副本。"""
