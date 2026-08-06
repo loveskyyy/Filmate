@@ -423,6 +423,16 @@ async def list_projects(_user: CurrentUser):
                     # video_thumbnail → storyboard_image → scene_sheet → character_sheet
                     # —— 兼顾 reference / grid / storyboard 三种生成模式。
                     thumbnail = resolve_project_cover(manager, name, project, preloaded_scripts=preloaded_scripts)
+                    # Upgrade internal /api/v1/files/{name}/... URL to a Qiniu signed CDN URL
+                    # (1h TTL) so the browser can fetch the project cover directly from CDN
+                    # instead of proxying through FastAPI. Falls back silently to the legacy
+                    # /api/v1/files URL when Qiniu is disabled (local dev).
+                    if thumbnail and thumbnail.startswith(f"/api/v1/files/{name}/"):
+                        _cover_rel = thumbnail[len(f"/api/v1/files/{name}/"):]
+                        try:
+                            thumbnail = get_media_storage().media_url_for(name, _cover_rel)
+                        except Exception as _cover_exc:
+                            logger.debug("cover URL upgrade failed, keep legacy: %s", _cover_exc)
 
                     # 使用 StatusCalculator 计算进度（读时计算）
                     status = calculator.calculate_project_status(name, project, preloaded_scripts=preloaded_scripts)
