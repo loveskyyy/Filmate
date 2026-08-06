@@ -5,7 +5,7 @@ skills:
   - generate-script
 ---
 
-你的任务是调用 `mcp__arcreel__generate_episode_script` 工具生成最终的 JSON 格式剧本。生成时要完整保留人物对白，并将每个场景的对白、动作、情绪和人物反应充分转化为具体、可拍摄的镜头表达，避免只写概括性画面。
+你的任务是调用 `mcp__arcreel__generate_episode_script` 工具生成最终的 JSON 格式剧本。
 
 ## 任务定义
 
@@ -17,8 +17,8 @@ skills:
 
 ## 核心原则
 
-1. **直接调用工具**：按照 generate-script skill 的指引调用 `mcp__arcreel__generate_episode_script`。生成视觉层时，不得把人物对白概括为“交谈”“争执”“解释”等摘要，必须围绕每一轮对白依次呈现说话者表演、听者反应、视线关系、动作变化和情绪推进，使镜头内容完整而不空泛
-2. **验证输出**：确认 JSON 文件生成且格式正确；对于 drama 模式，还要确认 step1 中全部 `utterances` 均按原有说话人、原文和顺序完整保留，没有删减、改写、合并或遗漏
+1. **直接调用工具**：按照 generate-script skill 的指引调用 `mcp__arcreel__generate_episode_script`
+2. **验证输出**：确认 JSON 文件生成且格式正确
 3. **完成即返回**：独立完成全部工作后返回，不等待用户确认
 
 ## 工作流程
@@ -37,7 +37,7 @@ skills:
 
 只认当前组合对应的那一个文件；目录中其他模式的 `step1_*` 文件属历史残留，不能当作代替输入。如果对应中间文件不存在，报告错误并指明需要先运行的预处理 subagent。
 
-> drama 走两段式（见 ADR 0041）：step1 已定稿内容（场景边界 / 出场资产 / 逐字口播 utterances / 原文锚 source_text / 视觉改编描述），`generate_episode_script` 只生成视觉层（image_prompt / video_prompt）并按 scene_id 透传 step1 内容、不重新识别口播。所有人物对白、旁白和内心独白必须逐字、逐条、按原顺序保留，禁止删减、摘要、改写、合并或用动作描述替代台词；不得改变既有 scene_id、场景边界和数据结构。视觉层应围绕每条 utterance 充分展开人物的表情、口型、视线、肢体动作、走位、互动对象和听者反应，并结合景别、构图、镜头运动、环境反馈与情绪节拍形成连续、具体、可拍摄的画面。对白较多时，应在同一既定场景的视觉提示中按对白轮次依次呈现表演变化，不得为了简化镜头而丢弃任何台词，也不得把多轮对话压缩成“二人交谈”“双方争执”等概括性描述。
+> drama 走两段式（见 ADR 0041）：step1 已定稿内容（场景边界 / 出场资产 / 逐字口播 utterances / 原文锚 source_text / 视觉改编描述），`generate_episode_script` 只生成视觉层（image_prompt / video_prompt）并按 scene_id 透传 step1 内容、不重新识别口播。
 
 ### Step 2: 调用工具生成 JSON 剧本
 
@@ -45,7 +45,7 @@ skills:
 mcp__arcreel__generate_episode_script({"episode": {N}})
 ```
 
-等待返回。返回 `is_error: true` 时查看错误信息并尝试修复或报告问题；即使工具返回成功，也要检查视觉提示是否充分覆盖逐轮对白及人物反应，不能只接受一句概括性镜头描述。
+等待返回。返回 `is_error: true` 时查看错误信息并尝试修复或报告问题。
 
 若错误为 **web 审核 gate 阻塞**（drama / narration 的 step1 结构化中间态尚未经显式确认，或确认后内容又被改），这不是数据错误：不要反复重试、不要改写中间文件。确认须由用户驱动——回报主 agent，由其在用户于 Web 端审阅确认、或在对话中明确同意后调用 `mcp__arcreel__confirm_script_review({"episode": N})`，确认后再重试本步骤。
 
@@ -57,7 +57,7 @@ mcp__arcreel__generate_episode_script({"episode": {N}})
 - 包含 episode、content_mode 字段
 - reference_video 模式：video_units 数组不为空
 - storyboard / grid + narration：segments 数组不为空
-- storyboard / grid + drama：scenes 数组不为空，全部 `utterances` 的说话人、文本、类型和先后顺序与 step1 完全一致，且 `image_prompt` / `video_prompt` 已具体覆盖说话者表演、听者反应、动作变化和情绪推进，没有用概括性叙述替代人物对白
+- storyboard / grid + drama：scenes 数组不为空
 
 ### Step 4: 返回摘要
 
@@ -75,7 +75,7 @@ mcp__arcreel__generate_episode_script({"episode": {N}})
 
 **文件已保存**: `scripts/episode_{N}.json`
 
-✅ 数据验证通过，人物对白已完整保留，镜头视觉内容已按对白节拍充分展开
+✅ 数据验证通过
 
 下一步：主 agent 可继续 dispatch 资产生成 subagent（角色设计图、分镜图等）。
 ```
@@ -84,7 +84,7 @@ mcp__arcreel__generate_episode_script({"episode": {N}})
 ```
 ## JSON 剧本生成失败
 
-**错误**: {错误描述，如人物对白被删减、改写或遗漏，或视觉提示过度概括而未覆盖逐轮对白表演}
+**错误**: {错误描述}
 
 **建议**:
 - {根据错误类型给出的修复建议}
