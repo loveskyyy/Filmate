@@ -104,9 +104,11 @@ class FilmateVideoBackend(VideoBackend):
 
     @property
     def video_capabilities(self) -> VideoCapabilities:
+        # filmate SD2.0 / Happy Horse / Seedance 等 model 接受任意数量的 reference_image(s)
+        # URL 数组（API 文档无硬性限制），这里用 100 作为实际软上限，超出会记 WARN 而不截断。
         if self._model == _HAPPY_HORSE_MODEL:
-            return VideoCapabilities(last_frame=True, reference_images=True, max_reference_images=4)
-        return VideoCapabilities(reference_images=True, max_reference_images=4)
+            return VideoCapabilities(last_frame=True, reference_images=True, max_reference_images=100)
+        return VideoCapabilities(reference_images=True, max_reference_images=100)
 
     async def generate(self, request: VideoGenerationRequest) -> VideoGenerationResult:
         """生成视频，使用任务提交 + 轮询模式。"""

@@ -1215,7 +1215,7 @@ PROVIDER_REGISTRY: dict[str, ProviderMeta] = {
                 resolutions=["720p", "1080p", "4k"],
                 # 多图主体（R2V）参考上限保守值；编排层裁剪读此处，与 backend caps 同值，
                 # 待 app.klingai.com 控制台核对，不硬编当既成事实。
-                max_reference_images=4,
+                max_reference_images=100,
                 pricing=_kling_video_pricing("kling-v3-omni"),
             ),
             "kling-v2-6": ModelInfo(
@@ -1234,7 +1234,7 @@ PROVIDER_REGISTRY: dict[str, ProviderMeta] = {
                 resolutions=["720p", "1080p"],
                 # 多图主体（R2V）参考上限保守值；编排层裁剪读此处，与 backend caps 同值，
                 # 待 app.klingai.com 控制台核对，不硬编当既成事实。
-                max_reference_images=4,
+                max_reference_images=100,
                 pricing=_kling_video_pricing("kling-video-o1"),
             ),
         },
@@ -1282,7 +1282,7 @@ PROVIDER_REGISTRY: dict[str, ProviderMeta] = {
                 default=True,
                 supported_durations=list(range(1, 19)),
                 resolutions=["480p", "720p", "1080p"],
-                max_reference_images=4,
+                max_reference_images=100,
                 pricing=_agnes_video_pricing("agnes-video-v2.0", 0.005),
             ),
         },
@@ -1344,9 +1344,8 @@ PROVIDER_REGISTRY: dict[str, ProviderMeta] = {
                 capabilities=["text_to_video", "image_to_video", "seed_control"],
                 supported_durations=list(range(4, 16)),
                 resolutions=["720p"],
-                # Filmate API accepts reference_image(s) URL; 4 matches the
-                # FilmateVideoBackend.video_capabilities ceiling.
-                max_reference_images=4,
+                # filmate SD2.0 API 不限参考图数量；100 足够覆盖实际场景。
+                max_reference_images=100,
             ),
             "SD2.0 标准 优惠版": ModelInfo(
                 display_name="SD2.0 标准 优惠版",
@@ -1354,9 +1353,8 @@ PROVIDER_REGISTRY: dict[str, ProviderMeta] = {
                 capabilities=["text_to_video", "image_to_video", "seed_control"],
                 supported_durations=list(range(4, 16)),
                 resolutions=["720p"],
-                # Filmate API accepts reference_image(s) URL; 4 matches the
-                # FilmateVideoBackend.video_capabilities ceiling.
-                max_reference_images=4,
+                # filmate SD2.0 API 不限参考图数量；100 足够覆盖实际场景。
+                max_reference_images=100,
             ),
         },
     ),
