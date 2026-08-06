@@ -152,24 +152,24 @@ def render_prompt_for_backend(text: str, references: list[ReferenceResource]) ->
 
 
 def assemble_shots_text(shots: list[Any]) -> str:
-    """把 unit.shots[*].text 拼接为单一原始 prompt（渲染、@→[图N] 替换之前）。
+    """把 unit.shots[*].text 拼为一条原始 prompt，在渲染 @ -> [图N] 替换之前使用。
 
-    供入队守卫点对参考生视频做空提示词结构校验：``render_prompt_for_backend`` 对未注册
-    的 @mention 保留原文、从不删字，故「拼接文本去空白后为空」等价于「渲染后为空」，
-    空检查可无损地在入队侧完成。
-
-    对畸形数据做防御性归一化（Agent 可裸写 script JSON，绕过 ProjectManager 校验）：
-    非 dict 的 shot 元素跳过；``text`` 缺失或非字符串（含显式 ``null``）按空串处理——
-    否则 ``str(None)`` 会得到 truthy 的 "None" 既绕过空校验又把字面量注入 backend。
+    每段会带上 ``Shot N (Ds):`` 前缀（N 从 1 开始，D 是 shot.duration 秒数），
+    让 filmate SD2.0 这类图生视频模型能感知每段镜头的时长节奏。
+    duration 缺失或非正数时退化为不带前缀的纯文本。
     """
     parts: list[str] = []
-    for s in shots:
+    for idx, s in enumerate(shots, 1):
         if not isinstance(s, dict):
             continue
         text = s.get("text")
-        parts.append(text if isinstance(text, str) else "")
+        text_str = text if isinstance(text, str) else ""
+        duration = s.get("duration")
+        if isinstance(duration, int) and duration > 0:
+            parts.append(f"Shot {idx} ({duration}s): {text_str}")
+        else:
+            parts.append(text_str)
     return "\n".join(parts)
-
 
 def compute_duration_from_shots(shots: list[Shot]) -> int:
     """把 shots 时长求和，返回整数秒。"""
