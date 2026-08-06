@@ -129,7 +129,7 @@ async def _discover_openai(base_url: str | None, api_key: str) -> list[dict]:
 
             result.append(
                 {
-                    "id": model_id,
+                    "model_id": model_id,
                     "display_name": display_name,
                     "endpoint": endpoint,
                     "is_default": False,
