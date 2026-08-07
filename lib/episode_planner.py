@@ -783,6 +783,25 @@ class EpisodePlanner:
             data = json.loads(text)
         except json.JSONDecodeError as exc:
             raise _DraftRejected([f"输出不是合法 JSON：{exc}"]) from exc
+        # 防御 LLM 把 JSON Schema 的 $ref 引用语法原样输出（instructor v2 + 嵌套模型常见 bug）
+        # 仅当输出 dict 中不包含任何已知合法 schema 字段时拦截，避免误伤正常输出。
+        if (
+            isinstance(data, dict)
+            and "$ref" in data
+            and not any(
+                k in data
+                for k in (
+                    "episodes",
+                    "title", "hook", "end_anchor", "story_beats", "next_episode_teaser",
+                    "episode", "outline", "source_range", "script_file",
+                )
+            )
+        ):
+            raise _DraftRejected([
+                f"你输出的是 JSON Schema 引用占位符 {data!r}，这是错的。"
+                "请直接输出完整展开的对象，例如："
+                '{"episodes": [{"title": "...", "hook": "...", "end_anchor": "...", "story_beats": ["..."], "next_episode_teaser": "..."}]}。'
+            ])
         try:
             return draft_model.model_validate(data)
         except ValidationError as exc:
@@ -1002,7 +1021,15 @@ def _build_planning_prompt(
     target_units = project.get("episode_target_units")
     is_screenplay = resolve_source_kind(project) == "screenplay"
 
+    # 防御 LLM 误解 JSON Schema 的 $ref 引用语法（instructor v2 + 嵌套 Pydantic 模型常见 bug）
+    _SCHEMA_HINT = '''# JSON 输出格式强制要求
+- **不要**输出形如 `{"$ref": "DramaEpisodeDraft"}` 的 JSON Schema 引用占位符。
+- **必须**直接输出完整展开的对象，顶层只接受 `episodes` 字段（list）。
+- 正确输出示例：`{"episodes": [{"title": "...", "hook": "...", "end_anchor": "...", "story_beats": ["..."], "next_episode_teaser": "..."}]}`
+'''
     lines: list[str] = [
+        _SCHEMA_HINT,
+        "",
         *(_PLAN_INTRO_SCREENPLAY if is_screenplay else _PLAN_INTRO_NOVEL),
         "",
         "# 项目信息",
