@@ -178,11 +178,11 @@ export function GlobalHeader({ onNavigateBack }: GlobalHeaderProps) {
           gridTemplateColumns: "minmax(0, 256px) 1fr auto",
           gap: 14,
           background:
-            "linear-gradient(180deg, oklch(0.21 0.011 265 / 0.85), oklch(0.19 0.010 265 / 0.75))",
-          backdropFilter: "blur(16px) saturate(1.1)",
-          WebkitBackdropFilter: "blur(16px) saturate(1.1)",
-          borderBottom: "1px solid var(--color-hairline)",
-          boxShadow: "0 1px 0 0 oklch(1 0 0 / 0.02) inset",
+            "linear-gradient(180deg, oklch(0.17 0.014 242 / 0.92), oklch(0.14 0.012 238 / 0.88))",
+          backdropFilter: "blur(20px) saturate(1.4)",
+          WebkitBackdropFilter: "blur(20px) saturate(1.4)",
+          borderBottom: "1px solid oklch(0.82 0.16 200 / 0.12)",
+          boxShadow: "0 1px 0 0 oklch(0.82 0.16 200 / 0.04) inset, 0 4px 16px -8px oklch(0 0 0 / 0.5)",
           position: "relative",
           zIndex: 20,
         }}
@@ -231,7 +231,7 @@ export function GlobalHeader({ onNavigateBack }: GlobalHeaderProps) {
               }}
               onMouseEnter={(e) => {
                 if (!notificationDrawerOpen)
-                  e.currentTarget.style.background = "oklch(0.28 0.012 265 / 0.6)";
+                  e.currentTarget.style.background = "oklch(0.82 0.16 200 / 0.10)";
               }}
               onMouseLeave={(e) => {
                 if (!notificationDrawerOpen) e.currentTarget.style.background = "transparent";
@@ -269,7 +269,7 @@ export function GlobalHeader({ onNavigateBack }: GlobalHeaderProps) {
               style={{
                 background: usageDrawerOpen
                   ? "var(--color-accent-dim)"
-                  : "oklch(0.22 0.011 265 / 0.5)",
+                  : "oklch(0.18 0.014 242 / 0.55)",
                 border: "1px solid var(--color-hairline-soft)",
                 color: "var(--color-text-2)",
               }}
@@ -332,7 +332,7 @@ export function GlobalHeader({ onNavigateBack }: GlobalHeaderProps) {
               }}
               onMouseEnter={(e) => {
                 if (!taskHudOpen)
-                  e.currentTarget.style.background = "oklch(0.28 0.012 265 / 0.6)";
+                  e.currentTarget.style.background = "oklch(0.82 0.16 200 / 0.10)";
               }}
               onMouseLeave={(e) => {
                 if (!taskHudOpen) e.currentTarget.style.background = "transparent";
@@ -371,10 +371,10 @@ export function GlobalHeader({ onNavigateBack }: GlobalHeaderProps) {
               className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors focus-ring disabled:cursor-not-allowed disabled:opacity-50"
               style={{
                 background:
-                  "linear-gradient(180deg, oklch(0.82 0.09 295), oklch(0.72 0.09 295))",
-                color: "oklch(0.15 0 0)",
+                  "linear-gradient(135deg, var(--color-accent-2), var(--color-accent))",
+                color: "oklch(0.08 0 0)",
                 boxShadow:
-                  "inset 0 1px 0 oklch(1 0 0 / 0.3), 0 0 0 1px oklch(0.55 0.10 295 / 0.4), 0 4px 14px -6px var(--color-accent-glow)",
+                  "inset 0 1px 0 oklch(1 0 0 / 0.3), 0 0 0 1px oklch(0.55 0.18 200 / 0.4), 0 6px 18px -8px var(--color-accent-glow)",
               }}
               title={t("dashboard:export_project_zip")}
               aria-label={t("dashboard:export_project_zip")}
@@ -411,7 +411,7 @@ export function GlobalHeader({ onNavigateBack }: GlobalHeaderProps) {
             className="grid h-[30px] w-[30px] place-items-center rounded-md transition-colors focus-ring"
             style={{ color: "var(--color-text-3)" }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "oklch(0.28 0.012 265 / 0.6)";
+              e.currentTarget.style.background = "oklch(0.82 0.16 200 / 0.10)";
               e.currentTarget.style.color = "var(--color-text)";
             }}
             onMouseLeave={(e) => {
@@ -437,7 +437,7 @@ export function GlobalHeader({ onNavigateBack }: GlobalHeaderProps) {
             className="relative grid h-[30px] w-[30px] place-items-center rounded-md transition-colors focus-ring"
             style={{ color: "var(--color-text-3)" }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "oklch(0.28 0.012 265 / 0.6)";
+              e.currentTarget.style.background = "oklch(0.82 0.16 200 / 0.10)";
               e.currentTarget.style.color = "var(--color-text)";
             }}
             onMouseLeave={(e) => {

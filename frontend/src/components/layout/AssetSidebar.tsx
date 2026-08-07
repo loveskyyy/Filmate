@@ -144,10 +144,10 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
       style={{
         width: collapsed ? 64 : 256,
         transition: "width .18s ease",
-        borderRight: "1px solid var(--color-hairline)",
+        borderRight: "1px solid oklch(0.82 0.16 200 / 0.10)",
         background:
-          "linear-gradient(180deg, oklch(0.195 0.011 265 / 0.6), oklch(0.175 0.010 265 / 0.5))",
-        boxShadow: "inset -1px 0 0 oklch(1 0 0 / 0.015)",
+          "linear-gradient(180deg, oklch(0.175 0.014 240 / 0.65), oklch(0.155 0.012 238 / 0.55))",
+        boxShadow: "inset -1px 0 0 oklch(0.82 0.16 200 / 0.04), 4px 0 20px -10px oklch(0 0 0 / 0.4)",
       }}
     >
       {/* ---- Workspace nav ---- */}
@@ -162,7 +162,7 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
               onClick={() => setLocation(item.path)}
               title={collapsed ? item.label : ""}
               aria-label={collapsed ? item.label : undefined}
-              className="relative mb-px flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors focus-ring hover:bg-[oklch(0.26_0.012_265/0.5)]"
+              className="relative mb-px flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors focus-ring hover:bg-[oklch(0.82_0.16_200/0.08)]"
               style={{
                 background: active
                   ? "linear-gradient(90deg, var(--color-accent-soft), var(--color-accent-dim) 70%, transparent)"
@@ -243,7 +243,7 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
                   aria-disabled="true"
                   className="grid h-5 w-5 place-items-center rounded focus-ring disabled:cursor-not-allowed disabled:opacity-50"
                   style={{
-                    background: "oklch(0.28 0.012 250 / 0.6)",
+                    background: "oklch(0.24 0.014 242 / 0.6)",
                     color: "var(--color-text-3)",
                   }}
                   title={t("dashboard:add_episode_unavailable")}
@@ -260,7 +260,7 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
               <div
                 className="flex items-center gap-1.5 rounded-md px-2 py-1.5"
                 style={{
-                  background: "oklch(0.16 0.010 250 / 0.6)",
+                  background: "oklch(0.14 0.012 240 / 0.65)",
                   border: "1px solid var(--color-hairline)",
                 }}
               >
@@ -341,8 +341,8 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
       <div
         className="flex items-center gap-2 px-2.5 py-2"
         style={{
-          borderTop: "1px solid var(--color-hairline)",
-          background: "oklch(0.17 0.010 250 / 0.6)",
+          borderTop: "1px solid oklch(0.82 0.16 200 / 0.10)",
+          background: "oklch(0.14 0.012 240 / 0.70)",
         }}
       >
         <button
@@ -351,7 +351,7 @@ export function AssetSidebar({ className }: AssetSidebarProps) {
           className="grid h-7 w-7 place-items-center rounded-md focus-ring"
           aria-expanded={!collapsed}
           style={{
-            background: "oklch(0.24 0.012 250 / 0.5)",
+            background: "oklch(0.22 0.014 242 / 0.55)",
             color: "var(--color-text-3)",
           }}
           title={collapsed ? t("dashboard:sidebar_expand") : t("dashboard:sidebar_collapse")}

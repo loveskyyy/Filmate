@@ -10,9 +10,9 @@ interface Props {
 }
 
 const DISPLAY_BG =
-  "linear-gradient(135deg, oklch(0.20 0.011 265), oklch(0.16 0.010 265))";
+  "linear-gradient(135deg, oklch(0.20 0.011 240), oklch(0.16 0.010 240))";
 const PICKER_BG =
-  "linear-gradient(135deg, oklch(0.22 0.011 265), oklch(0.18 0.010 265))";
+  "linear-gradient(135deg, oklch(0.22 0.011 240), oklch(0.18 0.010 240))";
 
 export function AssetThumb({ imageUrl, alt, fallback, variant }: Props) {
   const isDisplay = variant === "display";

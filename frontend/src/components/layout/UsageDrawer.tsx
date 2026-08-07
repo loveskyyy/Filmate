@@ -112,7 +112,7 @@ export function UsageDrawer({ open, onClose, projectName, anchorRef }: UsageDraw
           className="grid h-7 w-7 place-items-center rounded-lg"
           style={{
             background:
-              "linear-gradient(135deg, var(--color-accent-dim), oklch(0.76 0.09 295 / 0.05))",
+              "linear-gradient(135deg, var(--color-accent-dim), oklch(0.76 0.09 200 / 0.05))",
             border: "1px solid var(--color-accent-soft)",
             color: "var(--color-accent-2)",
             boxShadow: "0 8px 18px -8px var(--color-accent-glow)",
@@ -230,7 +230,7 @@ export function UsageDrawer({ open, onClose, projectName, anchorRef }: UsageDraw
                     borderTop: "1px solid var(--color-hairline-soft)",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "oklch(0.24 0.012 265 / 0.45)";
+                    e.currentTarget.style.background = "oklch(0.24 0.012 240 / 0.45)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = "transparent";
@@ -446,7 +446,7 @@ function StatusBadge({ status }: { status: string }) {
   };
   const cfg = config[status] ?? {
     color: "var(--color-text-3)",
-    bg: "oklch(0.24 0.012 265 / 0.45)",
+    bg: "oklch(0.24 0.012 240 / 0.45)",
   };
   return (
     <span
