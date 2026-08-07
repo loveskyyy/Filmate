@@ -54,7 +54,32 @@ def build_reference_video_prompt(
     filtered_durations = [d for d in supported_durations if 1 <= d <= 5]
     durations_desc = "/".join(str(d) for d in filtered_durations) + "s"
 
-    return f"""# 角色与任务
+    _SCHEMA_HINT = """# ⚠️ JSON 输出格式强制要求（防止响应被供应商 strict json_schema 通道解析失败）
+
+- 你的**最终输出**必须是一个**完整的 JSON 对象**（顶层为 `{...}`，不能是数组、标量或片段）。
+- 用一个 ```json ... ``` 代码块包裹整个 JSON，**代码块之外不要写任何内容**。
+- **绝对禁止**在响应里出现 `<think>...</think>` 块、内部思考 markdown、调试文本或前后语。
+- 顶层 schema：
+  ```
+  {
+    "title": "本集标题",
+    "video_units": [
+      {
+        "unit_id": "E{episode}U01",
+        "shots": [
+          {"duration": 3, "text": "景别：... 画面：... 音效：..."}
+        ],
+        "references": [{"type": "character"|"scene"|"prop", "name": "..."}],
+        "duration_seconds": 3
+      }
+    ]
+  }
+  ```
+- **绝对不要**只输出 `[3, 4, 3, 5]` 这种裸数组、或 `{"$ref": "..."}` 这种 schema 引用占位符——这些会被 Pydantic 拒绝。
+- 如果是带 CoT 思维链的模型（如 MiniMax-M3），请把思维放在 JSON 代码块**之前**用纯文本写一段；但 JSON 代码块必须是响应中**最后**且**唯一**的结构化输出。
+
+"""
+    return f"""{_SCHEMA_HINT}# 角色与任务
 
 你是一位资深的短视频分镜导演，精通视听语言、镜头叙事与节奏把控，具备完整的商业短剧导演思维与工业化分镜落地能力。本任务是为「参考生视频」模式产出 JSON 剧本。
 你的任务：基于下方 step1_units 表，按 schema 产出 ReferenceVideoScript。

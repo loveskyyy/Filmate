@@ -51,7 +51,7 @@ from lib.script_models import (
 from lib.script_skeleton import SKELETONS, resolve_declared_kind
 from lib.text_backends.base import DEFAULT_MAX_OUTPUT_TOKENS, TextGenerationRequest, TextTaskType
 from lib.text_generator import TextGenerator
-from lib.text_utils import strip_json_code_fences
+from lib.text_utils import strip_json_code_fences, strip_think_blocks
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +122,60 @@ def _coerce_duration(item: object, fallback: int) -> int:
     except (TypeError, ValueError):
         return fallback
     return parsed if parsed > 0 else fallback
+
+
+def _try_recover_dict(text: str) -> dict | None:
+    """从 LLM 响应文本中尝试兜底找出一个 JSON object。
+
+    触发场景：``json.loads`` 拿到 list / 标量（不是 dict），常见原因是：
+    - LLM 在 ``<think>`` 块里输出了字面数组或片段，供应商 strict json_schema 通道
+      把这些字符当成了响应主体（典型症状：``[3, 4, 3, 5]`` 通过 ``ReferenceVideoScript``
+      校验时报 ``Input should be an object``）。
+    - 响应 JSON 之前有非 JSON 前言/后语，``strip_json_code_fences`` 没能完整剥离。
+
+    策略：扫描文本中的第一个 ``{...}`` 平衡块（手动配对，避免被字符串里的 ``{`` 误导），
+    逐个尝试 ``json.loads``，要求至少含 ``title`` / ``video_units`` / ``shots`` / ``scenes``
+    / ``segments`` 之一（任一已知剧本字段），命中则返回。
+    """
+    if not isinstance(text, str) or not text:
+        return None
+    candidates: list[str] = []
+    depth = 0
+    start: int | None = None
+    in_str = False
+    esc = False
+    for i, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+            continue
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth == 0:
+                continue
+            depth -= 1
+            if depth == 0 and start is not None:
+                candidates.append(text[start : i + 1])
+                start = None
+    known_keys = ("title", "video_units", "shots", "scenes", "segments", "episode")
+    for cand in candidates:
+        try:
+            obj = json.loads(cand)
+        except (ValueError, TypeError):
+            continue
+        if isinstance(obj, dict) and any(k in obj for k in known_keys):
+            return obj
+    return None
 
 
 class ScriptGenerator:
@@ -710,14 +764,57 @@ class ScriptGenerator:
         Returns:
             验证后的剧本数据字典
         """
+        # 防御 LLM 思考块污染：先剥离 <think>...</think>。即使 prompt 禁止，
+        # MiniMax-M3 等带 CoT 的模型仍可能在响应里塞入思考块，供应商 strict json_schema
+        # 通道可能从思考块里抠出字面数组（如 `[3, 4, 3, 5]`）当成响应主体。先剥 think
+        # 让 markdown 代码栅栏提到文本最外层，后续 strip_json_code_fences 才能正确剥离。
+        text = strip_think_blocks(response_text)
         # 清理可能的 markdown 包装
-        text = strip_json_code_fences(response_text)
+        text = strip_json_code_fences(text)
 
         # 解析 JSON
         try:
             data = json.loads(text)
         except json.JSONDecodeError as e:
             raise ValueError(f"JSON 解析失败: {e}")
+
+        # 兜底：json.loads 拿到 list / 标量（不是 dict），常见原因是思考块残留或
+        # 供应商 strict json_schema 通道从响应中抠出了内层数组片段。尝试在原文中
+        # 重新定位一个含已知剧本字段的 JSON object，命中则覆盖 data。
+        if not isinstance(data, dict):
+            recovered = _try_recover_dict(response_text)
+            if isinstance(recovered, dict):
+                logger.warning(
+                    "剧本 LLM 响应顶层不是 dict（实际 %s），已从原文兜底提取 dict：%s",
+                    type(data).__name__, str(data)[:80],
+                )
+                data = recovered
+            else:
+                # 抛出明确错误，让 instructor 的重试反馈把诊断信息喂给 LLM。
+                raise ValueError(
+                    f"剧本 LLM 响应不是 JSON 对象（顶层为 {type(data).__name__}: "
+                    f"{str(data)[:120]}）。常见原因：模型在 <think> 块里输出了字面数组、"
+                    "思考过程截断、或仅返回了内层数组片段。请在 prompt 中明确要求输出完整 JSON "
+                    "对象并用 ```json ... ``` 包裹单一代码块。"
+                )
+
+        # 防御 LLM 把 JSON Schema 的 $ref 引用语法原样输出（instructor v2 + 嵌套 Pydantic
+        # 模型常见 bug）。仅当输出 dict 中不包含任何已知合法 schema 字段时拦截，避免
+        # 误伤含 $ref 但其它字段齐全的正常输出。
+        if (
+            isinstance(data, dict)
+            and "$ref" in data
+            and not any(
+                k in data
+                for k in (
+                    "title", "video_units", "shots", "scenes", "segments",
+                    "episode", "duration_seconds", "novel", "hook", "next_episode_teaser",
+                )
+            )
+        ):
+            raise ValueError(
+                f"剧本 LLM 输出的是 JSON Schema 引用占位符 {data!r}，请直接输出完整展开的对象。"
+            )
 
         # 校验模型经规范解析定骨架种类（ad→shots 骨架唯一，reference→video_units），
         # kind→模型映射留本地（模型属上层依赖，不进 SKELETONS 窄表）。
