@@ -41,7 +41,7 @@ from lib.text_backends.base import (
 )
 from lib.text_generator import TextGenerator
 from lib.text_metrics import count_reading_units, reading_unit_noun
-from lib.text_utils import strip_json_code_fences
+from lib.text_utils import strip_json_code_fences, strip_think_blocks
 
 logger = logging.getLogger(__name__)
 
@@ -366,6 +366,58 @@ _PLAN_DRAMA_OUTLINE_SCREENPLAY: str = (
     "与 next_episode_teaser（下集预告语；最后一集若后续未知可为 null）；"
     "剧本已写明本集节点 / 下集预告时照搬其原文，未写明再自行提炼。"
 )
+
+
+# 已知"列表型"剧本字段（值为 list[BaseModel]）。这些字段在 schema 里都接受 list，
+# 若 LLM 输出 schema 片段（如 ``{"items": {"$ref": "..."}, "type": "array"}``）就会
+# 触发 ``Input should be a valid array`` 错误。集中维护便于 Layer B 拦截。
+_LIST_FIELDS: tuple[str, ...] = (
+    "episodes", "segments", "scenes", "shots", "video_units",
+)
+# JSON Schema 片段的特征键：出现任一即可认定为 schema 片段而非业务数据。
+_SCHEMA_FRAGMENT_KEYS: frozenset[str] = frozenset({
+    "$ref", "$defs", "definitions",
+    "type", "items", "properties", "required", "additionalProperties",
+    "anyOf", "oneOf", "allOf", "$id", "$schema",
+})
+
+
+def _is_schema_fragment(value: object) -> bool:
+    """判定 value 是否为 JSON Schema 片段（而非业务数据）。
+
+    形态：dict，且至少含一个 JSON Schema 关键字（``$ref`` / ``type`` / ``items`` / ...）。
+    用于 Layer B 拦截 LLM 把 schema 当数据输出的常见 bug。
+    """
+    if not isinstance(value, dict):
+        return False
+    return any(k in value for k in _SCHEMA_FRAGMENT_KEYS)
+
+
+def _find_schema_fragment_in_data(data: object, path: str = "") -> str | None:
+    """递归扫描 data，定位第一个 schema 片段，返回 ``"字段路径 -> 片段值"`` 描述。
+
+    用于 Layer B 拦截错误信息（让 LLM 知道哪个字段出了问题）。
+
+    检测两类形态：
+      - 顶层 dict 自身就是 ``{"$ref": "X"}`` 引用（路径返回 ``"<root>"``）。
+      - 任意字段的值是 schema 片段 dict（含 ``$ref`` / ``type`` / ``items`` / ``$defs`` 等）。
+
+    仅扫描 dict 层级，不下钻 list 元素（避免 LLM 在 list 元素里写 ``type`` 等关键字
+    被误判——这种情况概率极低，且会被 Pydantic 自身校验拒绝）。
+    """
+    if isinstance(data, dict):
+        # 顶层 dict 自身就是 $ref 引用的情况（schema 整体引用，未展开）
+        if "$ref" in data:
+            return f"<root>={data!r}"
+        for k, v in data.items():
+            child_path = f"{path}.{k}" if path else k
+            if _is_schema_fragment(v):
+                return f"{child_path}={v!r}"
+            if isinstance(v, dict):
+                hit = _find_schema_fragment_in_data(v, child_path)
+                if hit:
+                    return hit
+    return None
 
 
 class EpisodePlanner:
@@ -779,22 +831,26 @@ class EpisodePlanner:
     @staticmethod
     def _parse_draft(response_text: str, draft_model: type[BaseModel]) -> BaseModel:
         text = strip_json_code_fences(response_text)
+        # 防御 LLM 思考块污染：剥离 <think>...</think>（同 script_generator 同口径）。
+        text = strip_think_blocks(text)
         try:
             data = json.loads(text)
         except json.JSONDecodeError as exc:
             raise _DraftRejected([f"输出不是合法 JSON：{exc}"]) from exc
-        # 防御 LLM 把 JSON Schema 的 $ref 引用语法原样输出（instructor v2 + 嵌套模型常见 bug）
-        # 仅当输出 dict 中不包含任何已知合法 schema 字段时拦截，避免误伤正常输出。
-        if (
-            isinstance(data, dict)
-            and "$ref" in data
-            and not any(
-                k in data
-                for k in (
-                    "episodes",
-                    "title", "hook", "end_anchor", "story_beats", "next_episode_teaser",
-                    "episode", "outline", "source_range", "script_file",
-                )
+
+        # === Layer B 防御 ===
+        # 拦截 LLM 把 JSON Schema 引用语法当数据输出的常见 bug。三类场景：
+        #   (1) 顶层 dict 直接是 {"$ref": "..."}（上一版已处理）。
+        #   (2) 顶层 dict 含 $ref 但无任何已知业务字段（避免误伤正常输出）。
+        #   (3) 任意字段值是 schema 片段（dict 含 $ref / type / items / $defs 等
+        #       JSON Schema 关键字），例如 {"episodes": {"items": {"$ref": "..."}, "type": "array"}}
+        #       —— 本次新增，覆盖嵌套版错误。
+
+        if isinstance(data, dict) and "$ref" in data and not any(
+            k in data
+            for k in (
+                "episodes", "title", "hook", "end_anchor", "story_beats", "next_episode_teaser",
+                "episode", "outline", "source_range", "script_file",
             )
         ):
             raise _DraftRejected([
@@ -802,6 +858,24 @@ class EpisodePlanner:
                 "请直接输出完整展开的对象，例如："
                 '{"episodes": [{"title": "...", "hook": "...", "end_anchor": "...", "story_beats": ["..."], "next_episode_teaser": "..."}]}。'
             ])
+
+        # 递归检测嵌套的 schema 片段（不限于已知字段名，因为 instructor 嵌套模型 bug 可能
+        # 把 schema 注入到任何字段）。错误信息用字符串拼接避免源文件多行字符串问题。
+        fragment_hit = _find_schema_fragment_in_data(data)
+        if fragment_hit:
+            list_fields_hint = "、".join(_LIST_FIELDS)
+            err_msg = (
+                "你在字段 " + fragment_hit + " 输出了 JSON Schema 片段"
+                "（含 $ref / type / items 等 schema 关键字），这是错的。"
+                "请直接输出完整展开的业务数据。"
+                "特别注意：" + list_fields_hint + " 等列表型字段必须是 list（数组），"
+                "不能是 schema 定义对象（如 {\"items\": ..., \"type\": \"array\"}）。"
+                "正确输出示例：{\"episodes\": [{\"title\": \"...\", \"hook\": \"...\", "
+                "\"end_anchor\": \"...\", \"story_beats\": [\"...\"], "
+                "\"next_episode_teaser\": \"...\"}]}"
+            )
+            raise _DraftRejected([err_msg])
+
         try:
             return draft_model.model_validate(data)
         except ValidationError as exc:
