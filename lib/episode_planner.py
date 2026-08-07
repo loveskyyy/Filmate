@@ -393,6 +393,31 @@ def _is_schema_fragment(value: object) -> bool:
     return any(k in value for k in _SCHEMA_FRAGMENT_KEYS)
 
 
+# Episode-level 字段（属于 DramaEpisodeDraft / NarrationEpisodeDraft 的成员名）。当 LLM
+# 漏掉 ``episodes`` 包装把这些字段直接放在顶层时，Pydantic ``extra="forbid"`` 会按
+# 未知字段逐个报错。Layer B 用这组字段名做"漏包装"检测。
+_EPISODE_LEVEL_FIELDS: frozenset[str] = frozenset({
+    "title", "hook", "end_anchor", "story_beats", "next_episode_teaser",
+})
+
+
+def _has_missing_episodes_wrapper(data: object) -> bool:
+    """检测 LLM 是否漏了 ``episodes`` 包装，把单集字段直接放顶层。
+
+    触发条件（且关系）：
+      - 顶层是 dict
+      - 顶层 dict 没有任何合法 PlanDraft 顶层字段（``episodes`` / ``episode_target_units``）
+      - 顶层 dict 含至少一个 episode 级字段（``title`` / ``hook`` / ...）
+      - 即 LLM 把 ``{"episodes": [{title, hook, ...}]}`` 误写成 ``{title, hook, ...}``。
+    """
+    if not isinstance(data, dict):
+        return False
+    plan_top_fields = {"episodes", "episode_target_units"}
+    if any(k in data for k in plan_top_fields):
+        return False
+    return any(k in data for k in _EPISODE_LEVEL_FIELDS)
+
+
 def _find_schema_fragment_in_data(data: object, path: str = "") -> str | None:
     """递归扫描 data，定位第一个 schema 片段，返回 ``"字段路径 -> 片段值"`` 描述。
 
@@ -873,6 +898,33 @@ class EpisodePlanner:
                 "正确输出示例：{\"episodes\": [{\"title\": \"...\", \"hook\": \"...\", "
                 "\"end_anchor\": \"...\", \"story_beats\": [\"...\"], "
                 "\"next_episode_teaser\": \"...\"}]}"
+            )
+            raise _DraftRejected([err_msg])
+
+        # 漏 episodes 包装：把单集字段直接放顶层（触发 Pydantic extra="forbid" 逐个报错）。
+        # 典型症状：output 形如 {"title": "...", "hook": "...", "end_anchor": "..."}，
+        # 缺了外层 {"episodes": [...]} 包装。
+        if _has_missing_episodes_wrapper(data):
+            err_msg = (
+                "你输出的 JSON 缺少最外层的 episodes 包装。"
+                "你现在直接放了单集字段（title / hook / end_anchor / story_beats / next_episode_teaser）"
+                "在顶层，但 PlanDraft schema 只接受一个 episodes 字段（list）。"
+                "请把单集数据用 \"episodes\" 字段包成一个 list，例如："
+                "{\"episodes\": [{\"title\": \"...\", \"hook\": \"...\", "
+                "\"end_anchor\": \"...\", \"story_beats\": [\"...\"], "
+                "\"next_episode_teaser\": \"...\"}]}"
+            )
+            raise _DraftRejected([err_msg])
+
+        # 顶层是 list（或其它非 dict 类型）：Pydantic 期望 BaseModel（即 dict）。
+        # 典型症状：output 是 [0] 或 [...]，是 LLM 输出被截断或完全错乱。
+        if not isinstance(data, dict):
+            err_msg = (
+                "你输出的 JSON 顶层必须是 object（{...}），但实际是 "
+                + type(data).__name__ + "：" + str(data)[:100] + "。"
+                "常见原因：输出被截断、模型只返回了内层数组片段、"
+                "或响应里混入了非 JSON 内容（如列表本身、字符串等）。"
+                "请输出完整的 object，顶层是 {\"episodes\": [...]}。"
             )
             raise _DraftRejected([err_msg])
 

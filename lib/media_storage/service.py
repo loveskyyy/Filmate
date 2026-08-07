@@ -563,7 +563,33 @@ class MediaStorage:
                                     ) from exc
                                 raise
                         if not temp_path.stat().st_size:
-                            raise MediaStorageError("七牛项目文件下载结果为空")
+                            # Qiniu CDN 边缘节点偶发返回 HTTP 200 + 0 字节 body。
+                            # 重新签 URL 再下一次，第二次一般能拿到完整内容。
+                            logger.warning(
+                                "Qiniu object %s downloaded 0 bytes, retrying with new signed URL",
+                                object_key,
+                            )
+                            try:
+                                with urlopen(self.signed_url_for_key(object_key), timeout=30) as response:
+                                    shutil.copyfileobj(response, temp_file)
+                            except HTTPError as exc:
+                                if exc.code == 404:
+                                    raise MediaStorageNotFoundError(
+                                        f"七牛对象不存在: {object_key}"
+                                    ) from exc
+                                raise
+                        if not temp_path.stat().st_size:
+                            # 仍然 0 字节：区分关键文件 vs 普通资产。
+                            if self._is_critical_project_object(object_key):
+                                raise MediaStorageError(
+                                    f"七牛关键项目文件下载结果为空: {object_key}"
+                                )
+                            logger.warning(
+                                "Qiniu object %s still empty after retry, skipping (non-critical)",
+                                object_key,
+                            )
+                            # skip 走 finally 清 temp_path；不写 target_path
+                            return
                         temp_path.replace(target_path)
                         if track_cache:
                             self._record_cache_entries([target_path])
@@ -575,6 +601,18 @@ class MediaStorage:
                 raise
             except Exception as exc:
                 raise MediaStorageError("七牛项目文件下载失败") from exc
+
+    @staticmethod
+    def _is_critical_project_object(object_key: str) -> bool:
+        """关键项目文件：缺了就让上层业务直接挂掉。其它资产允许 skip + warning。"""
+        suffix = object_key.rsplit("/", 1)[-1]
+        if suffix == "project.json":
+            return True
+        if "/scripts/" in object_key and suffix.endswith(".json"):
+            return True
+        if "/drafts/" in object_key:
+            return True
+        return False
 
     def _list_object_keys(self, prefix: str) -> list[str]:
         """列举前缀下的对象；失败时不将不完整项目伪装成可导出。"""
