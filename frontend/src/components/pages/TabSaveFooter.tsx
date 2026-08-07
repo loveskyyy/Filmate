@@ -14,7 +14,7 @@ interface TabSaveFooterProps {
 
 const FOOTER_DIRTY_STYLE: CSSProperties = {
   background:
-    "linear-gradient(180deg, oklch(0.20 0.011 240 / 0.65), oklch(0.15 0.010 240 / 0.55))",
+    "linear-gradient(180deg, oklch(0.20 0.011 265 / 0.65), oklch(0.15 0.010 265 / 0.55))",
   backdropFilter: "blur(28px) saturate(1.5)",
   WebkitBackdropFilter: "blur(28px) saturate(1.5)",
   borderTop: "1px solid var(--color-hairline)",
@@ -84,7 +84,7 @@ export function TabSaveFooter({
             isDirty
               ? ACCENT_BUTTON_STYLE
               : {
-                  background: "oklch(0.20 0.010 240 / 0.55)",
+                  background: "oklch(0.20 0.010 265 / 0.55)",
                   color: "var(--color-text-4)",
                   border: "1px solid var(--color-hairline-soft)",
                 }

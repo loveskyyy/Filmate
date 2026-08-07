@@ -1,15 +1,15 @@
 import type { CSSProperties } from "react";
 
 export const ACCENT_BUTTON_STYLE: CSSProperties = {
-  color: "oklch(0.08 0 0)",
-  background: "linear-gradient(135deg, var(--color-accent-2), var(--color-accent))",
+  color: "oklch(0.14 0 0)",
+  background: "linear-gradient(180deg, var(--color-accent-2), var(--color-accent))",
   boxShadow:
-    "inset 0 1px 0 oklch(1 0 0 / 0.3), 0 0 0 1px oklch(0.55 0.18 200 / 0.4), 0 8px 22px -8px var(--color-accent-glow)",
+    "inset 0 1px 0 oklch(1 0 0 / 0.3), 0 0 0 1px oklch(0.55 0.10 295 / 0.4), 0 6px 18px -8px var(--color-accent-glow)",
 };
 
 export const CARD_STYLE: CSSProperties = {
   background:
-    "linear-gradient(180deg, oklch(0.18 0.014 242 / 0.60), oklch(0.14 0.012 238 / 0.55))",
+    "linear-gradient(180deg, oklch(0.20 0.011 265 / 0.55), oklch(0.16 0.010 265 / 0.55))",
 };
 
 export const INPUT_CLS =
@@ -24,9 +24,9 @@ export const GHOST_BTN_LG_CLS = `${GHOST_BTN_BASE_CLS} gap-2 px-3.5 py-2 text-[1
 
 export const DROPDOWN_PANEL_STYLE: CSSProperties = {
   background:
-    "linear-gradient(180deg, oklch(0.18 0.014 242 / 0.95), oklch(0.14 0.012 238 / 0.95))",
-  backdropFilter: "blur(16px) saturate(1.3)",
-  WebkitBackdropFilter: "blur(16px) saturate(1.3)",
+    "linear-gradient(180deg, oklch(0.20 0.011 265 / 0.92), oklch(0.16 0.010 265 / 0.92))",
+  backdropFilter: "blur(12px)",
+  WebkitBackdropFilter: "blur(12px)",
 };
 
 const ACCENT_BTN_BASE_CLS =
@@ -58,11 +58,11 @@ interface PosterGridOptions {
 }
 
 export function posterGridStyle(opts?: PosterGridOptions): CSSProperties {
-  const size = opts?.size ?? 44;
+  const size = opts?.size ?? 40;
   const mask = `radial-gradient(${opts?.maskShape ?? "70% 70% at 50% 50%"}, black, transparent)`;
   const style: CSSProperties = {
     backgroundImage:
-      "linear-gradient(oklch(0.82 0.16 200 / 0.08) 1px, transparent 1px), linear-gradient(90deg, oklch(0.82 0.16 200 / 0.08) 1px, transparent 1px)",
+      "linear-gradient(oklch(1 0 0) 1px, transparent 1px), linear-gradient(90deg, oklch(1 0 0) 1px, transparent 1px)",
     backgroundSize: `${size}px ${size}px`,
     maskImage: mask,
     WebkitMaskImage: mask,
@@ -78,8 +78,8 @@ interface AmbientGlowOptions {
 
 export function ambientGlowStyle(opts?: AmbientGlowOptions): CSSProperties {
   const at = opts?.at ?? "50% 0%";
-  const alpha = opts?.intensity ?? 0.18;
+  const alpha = opts?.intensity ?? 0.16;
   return {
-    background: `radial-gradient(circle at ${at}, oklch(0.82 0.16 200 / ${alpha}), transparent 60%)`,
+    background: `radial-gradient(circle at ${at}, oklch(0.76 0.09 295 / ${alpha}), transparent 60%)`,
   };
 }

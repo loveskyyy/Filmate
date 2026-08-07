@@ -874,7 +874,7 @@ export function CustomProviderForm({ existing, onSaved, onCancel }: CustomProvid
         className="sticky bottom-0 z-10 border-t border-hairline px-6 py-3 backdrop-blur"
         style={{
           background:
-            "linear-gradient(180deg, oklch(0.20 0.011 240 / 0.65), oklch(0.15 0.010 240 / 0.85))",
+            "linear-gradient(180deg, oklch(0.20 0.011 265 / 0.65), oklch(0.15 0.010 265 / 0.85))",
         }}
       >
         <div className="flex items-center gap-3">

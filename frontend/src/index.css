@@ -3,29 +3,29 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-    /* 工作台基础色 — 深邃暗黑，参考电影级暗黑科技风格 */
-    --color-bg: oklch(0.130 0.012 240);
-    --color-bg-grad-a: oklch(0.148 0.014 245);
-    --color-bg-grad-b: oklch(0.110 0.010 235);
-    --color-surface-2: oklch(0.210 0.015 245);
+    /* 工作台基础色 — oklch 系 */
+    --color-bg: oklch(0.168 0.009 265);
+    --color-bg-grad-a: oklch(0.182 0.011 270);
+    --color-bg-grad-b: oklch(0.148 0.009 260);
+    --color-surface-2: oklch(0.250 0.012 265);
 
-    /* 描边 — 更清晰的边界感 */
-    --color-hairline: oklch(0.45 0.015 220 / 0.30);
-    --color-hairline-strong: oklch(0.50 0.018 220 / 0.50);
-    --color-hairline-soft: oklch(0.40 0.012 220 / 0.15);
+    /* 描边 */
+    --color-hairline: oklch(0.40 0.012 265 / 0.35);
+    --color-hairline-strong: oklch(0.45 0.014 265 / 0.55);
+    --color-hairline-soft: oklch(0.40 0.012 265 / 0.18);
 
     /* 文字四档 */
-    --color-text: oklch(0.970 0.006 220);
-    --color-text-2: oklch(0.810 0.010 220);
-    --color-text-3: oklch(0.620 0.012 220);
-    --color-text-4: oklch(0.470 0.010 220);
+    --color-text: oklch(0.975 0.004 265);
+    --color-text-2: oklch(0.820 0.008 265);
+    --color-text-3: oklch(0.640 0.010 265);
+    --color-text-4: oklch(0.490 0.010 265);
 
-    /* Accent — 青蓝霓虹色（参考暗黑科技/电影风格） */
-    --color-accent: oklch(0.82 0.16 200);
-    --color-accent-2: oklch(0.92 0.10 195);
-    --color-accent-soft: oklch(0.82 0.16 200 / 0.22);
-    --color-accent-dim: oklch(0.82 0.16 200 / 0.10);
-    --color-accent-glow: oklch(0.82 0.16 200 / 0.40);
+    /* Accent — 紫色 */
+    --color-accent: oklch(0.76 0.09 295);
+    --color-accent-2: oklch(0.88 0.05 295);
+    --color-accent-soft: oklch(0.76 0.09 295 / 0.22);
+    --color-accent-dim: oklch(0.76 0.09 295 / 0.12);
+    --color-accent-glow: oklch(0.76 0.09 295 / 0.35);
 
     /* 状态色 */
     --color-good: oklch(0.78 0.10 155);
@@ -57,17 +57,17 @@
     --font-editorial: "Instrument Serif", "Songti SC", "Noto Serif SC", Georgia, serif;
 
     /* 阴影 */
-    --shadow-glow: 0 0 0 1px oklch(0.82 0.16 200 / 0.28), 0 18px 40px oklch(0 0 0 / 0.55);
+    --shadow-glow: 0 0 0 1px oklch(0.76 0.09 295 / 0.28), 0 18px 40px oklch(0 0 0 / 0.45);
 
     /* ---- Legacy aliases — 旧组件继续可用，逐步迁移 ---- */
-    --color-ink-950: oklch(0.110 0.010 235);
-    --color-ink-900: oklch(0.130 0.012 240);
-    --color-ink-850: oklch(0.148 0.014 245);
-    --color-ink-800: oklch(0.210 0.015 245);
-    --color-ink-700: oklch(0.270 0.015 245);
-    --color-neon-500: oklch(0.82 0.16 200);
-    --color-neon-400: oklch(0.88 0.12 198);
-    --color-neon-300: oklch(0.92 0.10 195);
+    --color-ink-950: oklch(0.148 0.009 260);
+    --color-ink-900: oklch(0.168 0.009 265);
+    --color-ink-850: oklch(0.182 0.011 270);
+    --color-ink-800: oklch(0.250 0.012 265);
+    --color-ink-700: oklch(0.310 0.013 265);
+    --color-neon-500: oklch(0.76 0.09 295);
+    --color-neon-400: oklch(0.82 0.07 295);
+    --color-neon-300: oklch(0.88 0.05 295);
     --color-amberx-500: oklch(0.78 0.13 70);
     --color-amberx-400: oklch(0.84 0.10 70);
     --color-amberx-300: oklch(0.90 0.08 75);
@@ -80,14 +80,13 @@
     --color-accent-end: var(--color-accent-2);
 }
 
-/* 全局 body 背景 — 深邃电影感暗黑背景，带青蓝色光晕 */
+/* 全局 body 背景 — radial+linear 复合梯度 */
 html { color-scheme: dark; }
 
 body {
     background:
-        radial-gradient(1100px 550px at 5% -8%, oklch(0.35 0.12 200 / 0.16), transparent 50%),
-        radial-gradient(900px 500px at 96% 108%, oklch(0.28 0.08 220 / 0.16), transparent 52%),
-        radial-gradient(600px 400px at 50% 100%, oklch(0.20 0.06 240 / 0.10), transparent 60%),
+        radial-gradient(1000px 500px at 8% -10%, oklch(0.32 0.05 295 / 0.28), transparent 55%),
+        radial-gradient(900px 500px at 98% 110%, oklch(0.26 0.04 260 / 0.25), transparent 55%),
         linear-gradient(180deg, var(--color-bg-grad-a), var(--color-bg-grad-b));
     background-attachment: fixed;
     color: var(--color-text);
@@ -119,16 +118,16 @@ body {
     font-family: var(--font-display);
 }
 
-/* 滚动条 — 更细腻的青蓝色调 */
-::-webkit-scrollbar { width: 8px; height: 8px; }
+/* 滚动条 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb {
-    background: oklch(0.40 0.015 220 / 0.30);
-    border-radius: 8px;
+    background: oklch(0.42 0.010 265 / 0.35);
+    border-radius: 10px;
     border: 2px solid transparent;
     background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.55 0.020 210 / 0.50);
+    background: oklch(0.55 0.012 265 / 0.55);
     border: 2px solid transparent;
     background-clip: padding-box;
 }
@@ -147,16 +146,15 @@ body {
 
 /* === Modal / Glass panel chrome — 收拢 11 处弹窗 chrome 复制（issue #470 / #487） === */
 
-/* 玻璃面板 — 更深邃的玻璃感，带轻微青蓝色调 */
+/* 玻璃面板 — GlassModal / GlassPopover 的内容容器样式 */
 .arc-glass-panel {
-    background: linear-gradient(180deg, oklch(0.18 0.015 240 / 0.97), oklch(0.14 0.012 235 / 0.97));
+    background: linear-gradient(180deg, oklch(0.21 0.012 265 / 0.96), oklch(0.18 0.010 265 / 0.96));
     border: 1px solid var(--color-hairline);
-    backdrop-filter: blur(20px) saturate(1.4);
-    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     box-shadow:
-        0 28px 70px -14px oklch(0 0 0 / 0.70),
-        0 0 0 1px oklch(0.82 0.16 200 / 0.06),
-        inset 0 1px 0 oklch(1 0 0 / 0.06);
+        0 24px 60px -12px oklch(0 0 0 / 0.6),
+        inset 0 1px 0 oklch(1 0 0 / 0.05);
 }
 
 /* 顶部 hairline 渐变线（accent 默认 / warm 用 data-tone="warm"） */
@@ -186,12 +184,12 @@ body {
 .arc-btn-secondary {
     color: var(--color-text-3);
     border: 1px solid var(--color-hairline);
-    background: oklch(0.20 0.012 240 / 0.5);
+    background: oklch(0.22 0.011 265 / 0.5);
     transition: color 150ms, background 150ms, border-color 150ms;
 }
 .arc-btn-secondary:hover:not(:disabled) {
     color: var(--color-text);
-    background: oklch(0.24 0.015 240 / 0.7);
+    background: oklch(0.26 0.013 265 / 0.7);
     border-color: var(--color-hairline-strong);
 }
 .arc-btn-secondary:disabled {
@@ -199,9 +197,9 @@ body {
     cursor: not-allowed;
 }
 
-/* 主按钮 CTA — 青蓝霓虹 accent，warm/danger 用 data-tone */
+/* 主按钮 CTA — accent 默认，warm/danger 用 data-tone */
 .arc-btn-primary {
-    color: oklch(0.08 0 0);
+    color: oklch(0.14 0 0);
     background: linear-gradient(135deg, var(--color-accent-2), var(--color-accent));
     box-shadow:
         inset 0 1px 0 oklch(1 0 0 / 0.35),
@@ -225,10 +223,6 @@ body {
 }
 .arc-btn-primary:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow:
-        inset 0 1px 0 oklch(1 0 0 / 0.35),
-        0 10px 28px -6px var(--color-accent-glow),
-        0 0 0 1px var(--color-accent-soft);
 }
 .arc-btn-primary:disabled {
     opacity: 0.4;
