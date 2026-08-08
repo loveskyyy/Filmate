@@ -14,6 +14,7 @@ replan(from_episode, instructions) 在已规划范围内按用户自由文本意
 
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 from collections.abc import Callable, Mapping
@@ -223,6 +224,58 @@ def _find_all_overlapping(haystack: str, needle: str) -> list[int]:
     return starts
 
 
+# Tier3 模糊兜底：相似度阈值。0.78 在 CJK 场景下能覆盖「加/减标点、双换行→单换行、
+# 点头/点了点头 这类轻微改写」，同时不会把「赵明远沉默片刻 / 林川点了点头」这种
+# 完全不同的人物动作误判为同一片段（典型 < 0.5）。
+_FUZZY_ANCHOR_THRESHOLD: float = 0.78
+# 允许 anchor 长度 ±20% 浮动，挡住「点头」/「点了点头」这种最小改写差异。
+_FUZZY_ANCHOR_LEN_TOLERANCE: float = 0.2
+
+
+def _fuzzy_recover_anchor(
+    window: str,
+    anchor: str,
+    *,
+    threshold: float = _FUZZY_ANCHOR_THRESHOLD,
+    length_tolerance: float = _FUZZY_ANCHOR_LEN_TOLERANCE,
+) -> tuple[int, int, float] | None:
+    """Tier 3 兜底：anchor 在 window 中逐字找不到时，找最相似的等长子串。
+
+    解决的真实失配（来自线上 LLM 输出）：
+    - 句号 / 引号 / 换行 等标点增减：`结论也可以推翻。\n\n林川点了点头。` vs
+      `结论也可以推翻。\n林川点点头。`
+    - 轻微改词：`点头` / `点了点头` / `微微点头`
+    - 双换行折叠为单换行 + 空格
+    - 首字近形改写：`此处为` / `这是`（CJK 形近字，difflib 仍能给高分）
+
+    算法：滑动窗口 + ``difflib.SequenceMatcher.ratio``；长度允许 ±20% 浮动以吸收轻微改词。
+    不按首字符粗筛——CJK 形近字（`此` / `这`）会导致 LLM 改了首字但其余高相似，
+    强筛会错失这类匹配。返回相似度最高的 ``(start, length, ratio)``，仅当
+    ``ratio >= threshold`` 才视为命中（None 即放弃兜底、回到原 reject 路径）。
+    """
+    if not anchor or not window or len(anchor) < 2:
+        return None
+    n = len(anchor)
+    min_len = max(2, int(n * (1 - length_tolerance)))
+    max_len = min(len(window), int(n * (1 + length_tolerance)) + 1)
+    best: tuple[int, int, float] | None = None
+    for length in range(min_len, max_len + 1):
+        last_start = len(window) - length
+        if last_start < 0:
+            continue
+        for start in range(last_start + 1):
+            candidate = window[start : start + length]
+            ratio = difflib.SequenceMatcher(a=anchor, b=candidate, autojunk=False).ratio()
+            if best is None or ratio > best[2]:
+                best = (start, length, ratio)
+                if ratio == 1.0:
+                    # 极端早停：完全相等的子串不可能再被任何候选超过
+                    return best
+    if best is not None and best[2] >= threshold:
+        return best
+    return None
+
+
 def _resolve_boundaries(
     window: str,
     drafts: list[NarrationEpisodeDraft],
@@ -269,6 +322,37 @@ def _resolve_boundaries(
             if starts:
                 matched_by_fold = True
                 match_len = len(normalized_anchor)
+        if not starts:
+            # Tier 3 兜底：精确 + 折叠归一都失败时，尝试模糊匹配。
+            # 主要处理 LLM 在 end_anchor 上的常见自由发挥（加/减标点、轻微改词、
+            # 双换行→单换行+空格），用 difflib 找最相似子串。
+            # 找到后仍以原文子串为锚（语义保证不变），并校验唯一性。
+            fuzzy = _fuzzy_recover_anchor(window, anchor)
+            if fuzzy is not None:
+                f_start, f_len, f_ratio = fuzzy
+                recovered_substr = window[f_start : f_start + f_len]
+                # 用恢复出的真实原文子串再做一次严格 find，校验唯一性。
+                # 这样能挡住「恢复出的子串本身在 window 中多次出现」的歧义场景。
+                recovered_starts = _find_all_overlapping(window, recovered_substr)
+                if len(recovered_starts) == 1:
+                    starts = recovered_starts
+                    match_len = f_len
+                    matched_by_fold = True
+                    logger.info(
+                        "分集规划第 %d 条 end_anchor 模糊恢复（相似度 %.2f）：%r → %r",
+                        idx, f_ratio, anchor, recovered_substr,
+                    )
+                elif len(recovered_starts) == 0:
+                    # 理论上不会发生（fuzzy 刚从此处切出），防御性处理：走到原 reject。
+                    pass
+                else:
+                    reasons.append(
+                        f"第 {idx} 条的 end_anchor 通过模糊匹配恢复为唯一候选（相似度 {f_ratio:.2f}），"
+                        f"但该候选在原文窗口中出现 {len(recovered_starts)} 次，仍无法唯一定位，"
+                        f"请改用更长或更独特的片段: {anchor!r}"
+                    )
+                    ordering_valid = False
+                    continue
         if not starts:
             reasons.append(f"第 {idx} 条的 end_anchor 在原文窗口中不存在（必须逐字摘抄，含标点）: {anchor!r}")
             ordering_valid = False
