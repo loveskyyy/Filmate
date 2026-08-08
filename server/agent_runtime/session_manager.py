@@ -178,6 +178,15 @@ class ManagedSession:
 
         pending_questions 注册由 SessionManager._handle_special_message 处理。
         """
+        # Refresh last_activity on every received message so the watchdog
+        # (which scans for sessions idle for >N seconds) does not fire
+        # mid-generation. Without this, a 5K-token response that streams
+        # for 5 minutes would look 'stuck' to the watchdog because
+        # last_activity is only updated at send_query / finalize / mark_terminal.
+        # As long as the SDK is producing messages (assistant text, tool_use,
+        # tool_result, subagent output, result, etc.) the session is alive;
+        # the watchdog only fires when the SDK goes silent (the real bug).
+        self.last_activity = time.monotonic()
         self.channel.broadcast(msg)
 
     async def send_query(self, prompt: str | AsyncIterable[dict], sdk_session_id: str = "default") -> None:
@@ -1252,6 +1261,129 @@ class SessionManager:
         """启动巡检后台任务（应在应用 startup 时调用）。"""
         self._patrol_task = asyncio.create_task(self._patrol_loop())
 
+    # ------------------------------------------------------------------
+    # Watchdog: detect sessions stuck after a tool_result and force-terminate.
+    # ------------------------------------------------------------------
+    # Claude Agent SDK has a known state-machine bug: after consuming a
+    # tool_result, it does not produce the next assistant message. The
+    # session stays in ``running`` forever from the user's perspective, with
+    # no feedback and resource leak. We force-terminate such sessions by
+    # calling ``_mark_session_terminal("interrupted", "watchdog: ...")``,
+    # which (a) updates the DB, (b) broadcasts a ``runtime_status`` SSE event
+    # so the frontend unblocks immediately, (c) schedules cleanup.
+    #
+    # Complements the existing ``_interrupt_stale_running_sessions`` (called
+    # on service startup) which handles cold-start leftover rows. Together
+    # they cover: SDK state-machine bug during normal operation + crash
+    # recovery on restart.
+    _WATCHDOG_STUCK_TIMEOUT_SECONDS = int(
+        os.environ.get("ASSISTANT_STUCK_TIMEOUT_SECONDS", "300")
+    )
+    _WATCHDOG_INTERVAL_SECONDS = int(
+        os.environ.get("ASSISTANT_WATCHDOG_INTERVAL_SECONDS", "30")
+    )
+
+    async def _watchdog_once(self) -> int:
+        """Scan for stuck running sessions and force-terminate them.
+
+        A session is considered stuck when its ``last_activity`` is older
+        than ``_WATCHDOG_STUCK_TIMEOUT_SECONDS``. Returns the count of
+        sessions marked as interrupted this tick.
+        """
+        threshold = self._WATCHDOG_STUCK_TIMEOUT_SECONDS
+        now = time.monotonic()
+        candidates: list[tuple[ManagedSession, float]] = []
+        for sid, managed in list(self.sessions.items()):
+            if managed.status != "running":
+                continue
+            if sid in self._disconnecting:
+                continue
+            last_act = managed.last_activity
+            if last_act is None:
+                continue
+            age = now - last_act
+            if age < threshold:
+                continue
+            candidates.append((managed, age))
+
+        for managed, age in candidates:
+            sid = managed.session_id
+            reason = (
+                f"watchdog: no assistant activity for {age:.0f}s "
+                f"(threshold={threshold}s)"
+            )
+            logger.warning(
+                "Watchdog: marking stuck session as interrupted "
+                "session_id=%s status=%s age=%.1fs",
+                sid, managed.status, age,
+            )
+            try:
+                await self._mark_session_terminal(managed, "interrupted", reason)
+            except Exception:
+                logger.exception(
+                    "watchdog: _mark_session_terminal failed session_id=%s", sid
+                )
+                continue
+            # Best-effort: ask the actor to stop. If the SDK is truly dead
+            # (the typical case for a stuck session), send_interrupt will
+            # hang, so use a short timeout and fall back to force-cancel.
+            try:
+                await asyncio.wait_for(managed.send_interrupt(), timeout=3.0)
+            except asyncio.TimeoutError:
+                try:
+                    actor = getattr(managed, "actor", None)
+                    if actor is not None:
+                        await asyncio.wait_for(actor.cancel_and_wait(), timeout=3.0)
+                except Exception:
+                    logger.debug(
+                        "watchdog: actor force-cancel failed session_id=%s", sid
+                    )
+            except Exception:
+                try:
+                    actor = getattr(managed, "actor", None)
+                    if actor is not None:
+                        await asyncio.wait_for(actor.cancel_and_wait(), timeout=3.0)
+                except Exception:
+                    logger.debug(
+                        "watchdog: actor force-cancel failed session_id=%s", sid
+                    )
+        return len(candidates)
+
+    async def _watchdog_loop(self) -> None:
+        """Background watchdog loop: tick every N seconds."""
+        interval = self._WATCHDOG_INTERVAL_SECONDS
+        while True:
+            try:
+                await asyncio.sleep(interval)
+                await self._watchdog_once()
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("watchdog loop tick failed")
+
+    def start_watchdog(self) -> None:
+        """Spawn the periodic watchdog task. Idempotent."""
+        if (
+            getattr(self, "_watchdog_task", None) is not None
+            and not self._watchdog_task.done()
+        ):
+            return
+        self._watchdog_task = asyncio.create_task(self._watchdog_loop())
+        logger.info(
+            "Session watchdog started: interval=%ds stuck_threshold=%ds",
+            self._WATCHDOG_INTERVAL_SECONDS,
+            self._WATCHDOG_STUCK_TIMEOUT_SECONDS,
+        )
+
+    async def stop_watchdog(self) -> None:
+        """Cancel the watchdog task. Used during graceful shutdown."""
+        task = getattr(self, "_watchdog_task", None)
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(BaseException):
+                await task
+        self._watchdog_task = None
+
     @staticmethod
     def _resolve_result_status(
         result_message: dict[str, Any],
@@ -1559,6 +1691,14 @@ class SessionManager:
 
     async def shutdown_gracefully(self, timeout: float = 30.0) -> None:
         """Gracefully shutdown all sessions using the actor teardown path."""
+        # Stop watchdog first: avoid it racing with evict on the same session
+        watchdog = getattr(self, "_watchdog_task", None)
+        if watchdog is not None and not watchdog.done():
+            watchdog.cancel()
+            with contextlib.suppress(BaseException):
+                await watchdog
+        self._watchdog_task = None
+
         patrol = getattr(self, "_patrol_task", None)
         if patrol is not None and not patrol.done():
             patrol.cancel()
