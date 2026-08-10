@@ -168,6 +168,40 @@ docker exec deploy-new-filmate-1 bash -c 'cd /app && uv run python /tmp/test_wat
 ```
 Expected: `Watchdog: marking stuck session as interrupted ... age=600.0s` + `[AFTER] interrupted db=interrupted`.
 
+#### Auth gate split: login is open, admin gating is per-route
+
+**The wrong shape** (pre-2026-08-10): `/api/v1/users/login` had a hard
+`if user.role != "admin"` check. This blocked every non-admin user —
+including project owners with `role="user"` — from reaching the product
+UI. The frontend LoginPage calls this endpoint, so the 403 "只有管理员
+才能登录后台" was the first thing any non-admin user saw.
+
+**The right shape**: login accepts any authenticated user; admin-only
+operations gate at the route level via `require_admin`.
+
+- `server/auth.py` exports `require_admin` (a `Depends` callable that
+  403s non-admin tokens with `requires admin role`).
+- `server/routers/users.py` removed the login check.
+- The user-CRUD routes (list / get / create / update / delete / credits)
+  declare `dependencies=[Depends(require_admin)]` — admin functionality
+  stays admin-only.
+
+**Why this matters**: the role distinction (`admin` vs `user`) is for
+admin functionality (user management, system config, credits). It
+should not gate the login form itself — that would also lock out
+project owners, who are the people who actually need to USE the product.
+The two responsibilities are independent.
+
+**Adding more admin-only routes**: drop `dependencies=[Depends(require_admin)]`
+on the route decorator. Do NOT add a role check inside the function body
+(use the dependency, not an inline `if user.role != "admin"`).
+
+**Inconsistency note**: `/api/v1/auth/token` (OAuth2 form-encoded) was
+already role-agnostic. The frontend LoginPage uses `/api/v1/users/login`
+(JSON body) which had the wrong check. The two login endpoints are
+intentionally non-duplicate (different request shapes for different
+clients); the fix is the per-route gate, not removing either endpoint.
+
 ### lib/i18n/ — 国际化
 
 后端翻译层，支持 `zh`/`en`/`vi` 三种语言。`{zh,en,vi}/` 各文件按命名空间拆分：`errors`（错误与校验）、`providers`（供应商名称/描述）、`assets`（资产相关消息）、`emails`（邮件模板）、`system`（系统消息）、`templates`（模板消息）。
