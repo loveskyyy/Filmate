@@ -1350,16 +1350,134 @@ class SessionManager:
         return len(candidates)
 
     async def _watchdog_loop(self) -> None:
-        """Background watchdog loop: tick every N seconds."""
+        """Background watchdog loop: tick every N seconds.
+
+        Two complementary scans per tick:
+        1. ``_watchdog_once`` -> main sessions stuck in ``running`` state.
+        2. ``_watchdog_subagents_once`` -> sub-agent JSONL transcripts
+           whose mtime is stale (orphan sub-agents from completed parents).
+        """
         interval = self._WATCHDOG_INTERVAL_SECONDS
         while True:
             try:
                 await asyncio.sleep(interval)
                 await self._watchdog_once()
+                await self._watchdog_subagents_once()
             except asyncio.CancelledError:
                 break
             except Exception:
                 logger.exception("watchdog loop tick failed")
+
+
+    async def _watchdog_subagents_once(self) -> int:
+        """Scan sub-agent JSONL transcripts for stuck async tasks and mark them.
+
+        Sub-agents dispatched via the SDK ``Agent`` tool run as background
+        async tasks inside the parent's SDK client. If the parent session
+        completes (or is interrupted) the SDK is *supposed* to wait for its
+        sub-agents to finish, but the SDK has a known state-machine bug
+        where the parent reports "completed" while the sub-agent is still
+        running in a separate async context with no parent supervising it.
+        The result is an orphan sub-agent whose ``agent-*.jsonl`` keeps
+        growing (or freezes) without anyone noticing. The project UI has
+        no way to distinguish "still working" from "abandoned".
+
+        This watchdog fills the gap: for every session we look at
+        ``~/.claude/projects/{cwd_dash}/{session_id}/subagents/agent-*.jsonl``
+        and, if the file's mtime is older than the same threshold used for
+        the main-session watchdog, append a synthetic
+        ``{type: "system", subtype: "watchdog_killed", ...}`` entry. The
+        frontend picks this up via the SSE stream and shows a clear error,
+        so the user can retry without waiting for a phantom background task.
+
+        We never delete the orphan files - they are the audit trail.
+
+        Threshold: same as the main-session watchdog
+        (``ASSISTANT_STUCK_TIMEOUT_SECONDS``). Intentionally no separate
+        env var: a sub-agent that needs more than 5 minutes of wall-clock
+        with no I/O is broken; if a real workload genuinely takes that long
+        the SDK is keeping ``last_activity`` (file mtime) fresh, so the
+        watchdog will not fire.
+        """
+        import json as _json
+        threshold = self._WATCHDOG_STUCK_TIMEOUT_SECONDS
+        now = time.monotonic()
+        killed = 0
+        # Claude SDK stores per-session transcripts under
+        # ``$CLAUDE_PROJECTS_DIR/{cwd_with_slashes_replaced_by_dashes}/{session_id}/subagents/``.
+        # Default ``CLAUDE_PROJECTS_DIR`` is ``~/.claude/projects/``.
+        projects_root_env = os.environ.get("CLAUDE_PROJECTS_DIR", "").strip()
+        if projects_root_env:
+            claude_projects_root = Path(projects_root_env).expanduser()
+        else:
+            claude_projects_root = Path.home() / ".claude" / "projects"
+        if not claude_projects_root.is_dir():
+            return 0
+        for sid, managed in list(self.sessions.items()):
+            if managed.status not in ("running", "completed"):
+                continue
+            project_name = managed.project_name
+            if not project_name:
+                continue
+            try:
+                project_cwd = self._resolve_project_cwd(project_name)
+            except Exception:
+                continue
+            if project_cwd is None:
+                continue
+            cwd_dash = str(project_cwd).replace("/", "-")
+            sub_dir = claude_projects_root / cwd_dash / sid / "subagents"
+            if not sub_dir.is_dir():
+                continue
+            for jsonl in sub_dir.glob("agent-*.jsonl"):
+                try:
+                    mtime = jsonl.stat().st_mtime
+                except OSError:
+                    continue
+                age = now - mtime
+                if age < threshold:
+                    continue
+                # Avoid double-killing: check the last 4 KB of the file
+                # for our watchdog marker.
+                try:
+                    with jsonl.open("r", encoding="utf-8") as f:
+                        f.seek(0, 2)
+                        size = f.tell()
+                        f.seek(max(0, size - 4096))
+                        tail = f.read()
+                except OSError:
+                    continue
+                if '"subtype": "watchdog_killed"' in tail:
+                    # Already marked by a prior tick.
+                    continue
+                # Append a synthetic entry. Same shape as the SDK's own
+                # ``system`` messages, so downstream code that filters on
+                # ``type == "system"`` picks it up consistently.
+                reason = (
+                    f"watchdog: sub-agent no I/O for {age:.0f}s "
+                    f"(threshold={threshold}s)"
+                )
+                kill_entry = _json.dumps({
+                    "type": "system",
+                    "subtype": "watchdog_killed",
+                    "reason": reason,
+                    "agentId": "watchdog",
+                    "sessionId": sid,
+                    "isSidechain": True,
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+                }, ensure_ascii=False)
+                try:
+                    with jsonl.open("a", encoding="utf-8") as f:
+                        f.write(kill_entry + "\n")
+                except OSError:
+                    logger.debug("watchdog: failed to append kill entry to %s", jsonl)
+                    continue
+                logger.warning(
+                    "Watchdog: killing stuck sub-agent %s session_id=%s age=%.1fs",
+                    jsonl.name, sid, age,
+                )
+                killed += 1
+        return killed
 
     def start_watchdog(self) -> None:
         """Spawn the periodic watchdog task. Idempotent."""
