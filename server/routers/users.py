@@ -12,7 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lib.db import async_engine
 from lib.db.models.user import User
-from server.auth import _password_hash, check_credentials, create_token
+from server.auth import (
+    _password_hash,
+    check_credentials,
+    create_token,
+    require_admin,
+)
 
 router = APIRouter()
 
@@ -92,14 +97,17 @@ async def login(data: LoginRequest, session: AsyncSession = Depends(get_session)
         user.hashed_password = _password_hash.hash(data.password)
         await session.commit()
 
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="只有管理员才能登录后台")
-
+    # Open the login gate to all authenticated users. Per-route admin
+    # gating (`require_admin` from server.auth) is applied to the
+    # user-management / system-config routes below. Pre-fix behavior:
+    # the login gate blocked any role != "admin" with 403, which
+    # also blocked project owners (role="user") from reaching the
+    # product UI even though they own valid projects.
     token = create_token(data.username, user_id=user.id, role=user.role)
     return {"access_token": token, "token_type": "bearer"}
 
 
-@router.get("/users", response_model=list[UserResponse])
+@router.get("/users", response_model=list[UserResponse], dependencies=[Depends(require_admin)])
 async def list_users(session: AsyncSession = Depends(get_session)):
     """获取用户列表"""
     result = await session.execute(select(User).order_by(User.id))
@@ -119,7 +127,7 @@ async def list_users(session: AsyncSession = Depends(get_session)):
     ]
 
 
-@router.get("/users/{user_id}", response_model=UserResponse)
+@router.get("/users/{user_id}", response_model=UserResponse, dependencies=[Depends(require_admin)])
 async def get_user(user_id: int, session: AsyncSession = Depends(get_session)):
     """获取用户"""
     result = await session.execute(select(User).where(User.id == user_id))
@@ -138,7 +146,7 @@ async def get_user(user_id: int, session: AsyncSession = Depends(get_session)):
     )
 
 
-@router.post("/users", response_model=UserResponse)
+@router.post("/users", response_model=UserResponse, dependencies=[Depends(require_admin)])
 async def create_user(data: UserCreate, session: AsyncSession = Depends(get_session)):
     """创建用户"""
     result = await session.execute(select(User).where(User.username == data.username))
@@ -168,7 +176,7 @@ async def create_user(data: UserCreate, session: AsyncSession = Depends(get_sess
     )
 
 
-@router.put("/users/{user_id}", response_model=UserResponse)
+@router.put("/users/{user_id}", response_model=UserResponse, dependencies=[Depends(require_admin)])
 async def update_user(user_id: int, data: UserUpdate, session: AsyncSession = Depends(get_session)):
     """更新用户"""
     result = await session.execute(select(User).where(User.id == user_id))
@@ -215,7 +223,7 @@ async def update_user(user_id: int, data: UserUpdate, session: AsyncSession = De
     )
 
 
-@router.delete("/users/{user_id}")
+@router.delete("/users/{user_id}", dependencies=[Depends(require_admin)])
 async def delete_user(user_id: int, session: AsyncSession = Depends(get_session)):
     """删除用户"""
     result = await session.execute(select(User).where(User.id == user_id))
@@ -233,7 +241,7 @@ class CreditsAdjustRequest(BaseModel):
     reason: str | None = None
 
 
-@router.post("/users/{user_id}/credits", response_model=UserResponse)
+@router.post("/users/{user_id}/credits", response_model=UserResponse, dependencies=[Depends(require_admin)])
 async def adjust_user_credits(user_id: int, data: CreditsAdjustRequest, session: AsyncSession = Depends(get_session)):
     """调整用户积分"""
     result = await session.execute(select(User).where(User.id == user_id))
