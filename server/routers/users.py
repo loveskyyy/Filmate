@@ -44,6 +44,22 @@ class UserResponse(BaseModel):
     created_at: str | None = None
     updated_at: str | None = None
 
+class UserLoginInfo(BaseModel):
+    """User info embedded in /users/login response.
+
+    Mirrors the frontend `LoginResponse.user` shape in
+    `frontend/src/api.ts`. Kept as a separate Pydantic model
+    because the field names differ from UserResponse (id is
+    stringified; credits is renamed to balance; is_registered
+    is derived from hashed_password being set).
+    """
+    id: str
+    username: str
+    role: str
+    is_active: bool
+    balance: int
+    is_registered: bool
+
 
 class UserCreate(BaseModel):
     username: str
@@ -104,7 +120,18 @@ async def login(data: LoginRequest, session: AsyncSession = Depends(get_session)
     # also blocked project owners (role="user") from reaching the
     # product UI even though they own valid projects.
     token = create_token(data.username, user_id=user.id, role=user.role)
-    return {"access_token": token, "token_type": "bearer"}
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": UserLoginInfo(
+            id=str(user.id),
+            username=user.username,
+            role=user.role,
+            is_active=bool(user.is_active),
+            balance=user.credits,
+            is_registered=user.hashed_password is not None,
+        ).model_dump(),
+    }
 
 
 @router.get("/users", response_model=list[UserResponse], dependencies=[Depends(require_admin)])
