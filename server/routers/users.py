@@ -16,6 +16,7 @@ from server.auth import (
     _password_hash,
     check_credentials,
     create_token,
+    CurrentUser,
     require_admin,
 )
 
@@ -132,6 +133,54 @@ async def login(data: LoginRequest, session: AsyncSession = Depends(get_session)
             is_registered=user.hashed_password is not None,
         ).model_dump(),
     }
+
+
+class BalanceResponse(BaseModel):
+    balance: int
+    message: str
+
+
+@router.get("/users/me", response_model=UserLoginInfo)
+async def get_current_user(
+    current_user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    """Return the authenticated user's profile.
+
+    The frontend LoginPage calls this to verify the token and
+    populate the auth store. Kept separate from the role-gated
+    /users/{user_id} route — any authenticated user can read
+    their own profile.
+    """
+    result = await session.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    return UserLoginInfo(
+        id=str(user.id),
+        username=user.username,
+        role=user.role,
+        is_active=bool(user.is_active),
+        balance=user.credits,
+        is_registered=user.hashed_password is not None,
+    )
+
+
+@router.get("/users/me/balance", response_model=BalanceResponse)
+async def get_my_balance(
+    current_user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    """Return current user's credit balance.
+
+    Note: backend has a sibling /users/me/credits route in
+    transactions.py that returns the same data under a different
+    key (credits vs balance). The frontend expects this one.
+    """
+    result = await session.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one_or_none()
+    balance = user.credits if user else 0
+    return BalanceResponse(balance=balance, message="ok")
 
 
 @router.get("/users", response_model=list[UserResponse], dependencies=[Depends(require_admin)])
