@@ -1,4 +1,3 @@
-from lib.media_storage import get_media_storage
 """
 状态和统计字段的实时计算器
 
@@ -9,7 +8,7 @@ from lib.media_storage import get_media_storage
 import logging
 
 from lib.episode_paths import STEP1_FILENAMES, STEP1_LEGACY_FILENAMES, episode_drafts_dir
-from lib.path_safety import safe_exists
+from lib.media_storage import get_media_storage
 from lib.project_manager import effective_mode
 from lib.script_models import ad_script_total_duration
 from lib.script_skeleton import SKELETONS, resolve_declared_kind
@@ -381,30 +380,20 @@ class StatusCalculator:
         Returns:
             ProjectStatus 字典：current_phase, phase_progress, characters, scenes, props, episodes_summary
         """
-        project_dir = self.pm.get_project_path(project_name)
-
-        # 角色/场景/道具统计
-        # 云端唯一模式下 media 文件不会自动物化，所以 safe_exists(project_dir) 不可靠；
-        # 改用 cloud-aware 的 project_asset_exists()，Qiniu 启用时走 Qiniu stat。
-        project_name = project.get("name") or project_dir.name
-        storage = get_media_storage()
-
-        def _asset_exists(sheet: str) -> bool:
-            if not sheet:
-                return False
-            return storage.project_asset_exists(project_name, sheet)
-
+        # 资产路径只会在媒体成功写入对象存储后回写 project.json；因此非空 sheet
+        # 字段就是列表状态的权威完成标记。不要在读热路径逐项 stat 云端对象，否则
+        # 列表延迟会随资产数量线性增长。对象完整性检查属于显式诊断/修复流程。
         chars = project.get("characters", {})
         chars_total = len(chars)
-        chars_done = sum(1 for c in chars.values() if _asset_exists(c.get("character_sheet", "")))
+        chars_done = sum(1 for c in chars.values() if c.get("character_sheet"))
 
         scenes = project.get("scenes", {})
         scenes_total = len(scenes)
-        scenes_done = sum(1 for s in scenes.values() if _asset_exists(s.get("scene_sheet", "")))
+        scenes_done = sum(1 for s in scenes.values() if s.get("scene_sheet"))
 
         props = project.get("props", {})
         props_total = len(props)
-        props_done = sum(1 for p in props.values() if _asset_exists(p.get("prop_sheet", "")))
+        props_done = sum(1 for p in props.values() if p.get("prop_sheet"))
 
         # 每集状态：优先使用预加载数据，否则自行加载
         if _preloaded_episodes_stats is not None:
@@ -477,9 +466,7 @@ class StatusCalculator:
             _maybe_add_url(entry, "product_sheet", "product_sheet_url")
         if project.get("style_image"):
             try:
-                project["style_image_url"] = storage.media_url_for(
-                    project_name, project["style_image"]
-                )
+                project["style_image_url"] = storage.media_url_for(project_name, project["style_image"])
             except Exception:
                 pass
 

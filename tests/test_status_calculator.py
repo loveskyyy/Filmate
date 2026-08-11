@@ -259,6 +259,27 @@ class TestStatusCalculator:
         assert status["props"] == {"total": 1, "completed": 1}
         assert status["episodes_summary"] == {"total": 1, "scripted": 1, "in_production": 0, "completed": 1}
 
+    def test_calculate_project_status_uses_persisted_sheet_paths_without_storage_lookup(self, tmp_path, monkeypatch):
+        project = {
+            "overview": {"synopsis": "test"},
+            "characters": {"A": {"character_sheet": "characters/A.png"}},
+            "scenes": {"S1": {"scene_sheet": "scenes/S1.png"}},
+            "props": {"P1": {"prop_sheet": "props/P1.png"}},
+            "episodes": [],
+        }
+
+        def _unexpected_storage_lookup():
+            raise AssertionError("项目列表状态计算不应逐个查询对象存储")
+
+        monkeypatch.setattr("lib.status_calculator.get_media_storage", _unexpected_storage_lookup)
+        calc = StatusCalculator(_FakePM(tmp_path, project, {}))
+
+        status = calc.calculate_project_status("demo", project)
+
+        assert status["characters"] == {"total": 1, "completed": 1}
+        assert status["scenes"] == {"total": 1, "completed": 1}
+        assert status["props"] == {"total": 1, "completed": 1}
+
     def test_enrich_project(self, tmp_path):
         project_root = tmp_path / "projects"
         project_root.mkdir(parents=True)
