@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     bubblewrap \
     socat \
+    jq \
     tzdata \
     && rm -rf /var/lib/apt/lists/*
 

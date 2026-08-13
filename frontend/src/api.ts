@@ -23,6 +23,7 @@ import type {
   ProjectChangeBatchPayload,
   ProjectEventSnapshotPayload,
   ProjectDeletedPayload,
+  ProjectScriptSavedPayload,
   GetSystemConfigResponse,
   GetSystemVersionResponse,
   SystemConfigPatch,
@@ -152,6 +153,9 @@ export interface ProjectEventStreamOptions {
   projectName: string;
   onSnapshot?: (payload: ProjectEventSnapshotPayload, event: MessageEvent) => void;
   onChanges?: (payload: ProjectChangeBatchPayload, event: MessageEvent) => void;
+  // ``script_saved`` 事件由后端 ``_do_broadcast_script_saved`` 在 save_script 写盘
+  // 后立即广播，绕开 watch task 的 0.5s 轮询——见 ProjectScriptSavedPayload 注释。
+  onScriptSaved?: (payload: ProjectScriptSavedPayload, event: MessageEvent) => void;
   /** 项目目录被删除后收到一次，随后流正常结束（浏览器会紧接着触发一次 onError）。 */
   onProjectDeleted?: (payload: ProjectDeletedPayload, event: MessageEvent) => void;
   onError?: (event: Event) => void;
@@ -1554,6 +1558,7 @@ class API {
 
     source.addEventListener("snapshot", createHandler(options.onSnapshot));
     source.addEventListener("changes", createHandler(options.onChanges));
+    source.addEventListener("script_saved", createHandler(options.onScriptSaved));
     source.addEventListener("project_deleted", createHandler(options.onProjectDeleted));
 
     source.onerror = (event: Event) => {

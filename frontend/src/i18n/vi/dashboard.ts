@@ -197,6 +197,7 @@ export default {
   'overview_gen_desc': 'Tổng quan dự án sẽ được tạo, sau đó bạn có thể bắt đầu viết kịch bản và phân cảnh',
   'project_overview_regenerated': 'Đã tạo lại tổng quan dự án',
   'project_sync_failed': 'Đồng bộ thay đổi dự án thất bại: {{message}}',
+  'script_generated_notification': 'Đã tạo kịch bản tập {{episode}}',
   'synopsis': 'Tóm tắt',
   'genre': 'Thể loại',
   'theme': 'Chủ đề',

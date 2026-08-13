@@ -197,6 +197,7 @@ export default {
   'overview_gen_desc': '自动生成项目概述，然后您可以开始创建剧本和分镜',
   'project_overview_regenerated': '项目概述已重新生成',
   'project_sync_failed': '同步项目变更失败: {{message}}',
+  'script_generated_notification': '第 {{episode}} 集剧本已生成',
   'synopsis': '故事梗概',
   'genre': '题材',
   'theme': '主题',

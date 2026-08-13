@@ -178,6 +178,15 @@ class ManagedSession:
 
         pending_questions 注册由 SessionManager._handle_special_message 处理。
         """
+        # Refresh last_activity on every received message so the watchdog
+        # (which scans for sessions idle for >N seconds) does not fire
+        # mid-generation. Without this, a 5K-token response that streams
+        # for 5 minutes would look 'stuck' to the watchdog because
+        # last_activity is only updated at send_query / finalize / mark_terminal.
+        # As long as the SDK is producing messages (assistant text, tool_use,
+        # tool_result, subagent output, result, etc.) the session is alive;
+        # the watchdog only fires when the SDK goes silent (the real bug).
+        self.last_activity = time.monotonic()
         self.channel.broadcast(msg)
 
     async def send_query(self, prompt: str | AsyncIterable[dict], sdk_session_id: str = "default") -> None:
@@ -1252,6 +1261,247 @@ class SessionManager:
         """启动巡检后台任务（应在应用 startup 时调用）。"""
         self._patrol_task = asyncio.create_task(self._patrol_loop())
 
+    # ------------------------------------------------------------------
+    # Watchdog: detect sessions stuck after a tool_result and force-terminate.
+    # ------------------------------------------------------------------
+    # Claude Agent SDK has a known state-machine bug: after consuming a
+    # tool_result, it does not produce the next assistant message. The
+    # session stays in ``running`` forever from the user's perspective, with
+    # no feedback and resource leak. We force-terminate such sessions by
+    # calling ``_mark_session_terminal("interrupted", "watchdog: ...")``,
+    # which (a) updates the DB, (b) broadcasts a ``runtime_status`` SSE event
+    # so the frontend unblocks immediately, (c) schedules cleanup.
+    #
+    # Complements the existing ``_interrupt_stale_running_sessions`` (called
+    # on service startup) which handles cold-start leftover rows. Together
+    # they cover: SDK state-machine bug during normal operation + crash
+    # recovery on restart.
+    _WATCHDOG_STUCK_TIMEOUT_SECONDS = int(
+        os.environ.get("ASSISTANT_STUCK_TIMEOUT_SECONDS", "300")
+    )
+    _WATCHDOG_INTERVAL_SECONDS = int(
+        os.environ.get("ASSISTANT_WATCHDOG_INTERVAL_SECONDS", "30")
+    )
+
+    async def _watchdog_once(self) -> int:
+        """Scan for stuck running sessions and force-terminate them.
+
+        A session is considered stuck when its ``last_activity`` is older
+        than ``_WATCHDOG_STUCK_TIMEOUT_SECONDS``. Returns the count of
+        sessions marked as interrupted this tick.
+        """
+        threshold = self._WATCHDOG_STUCK_TIMEOUT_SECONDS
+        now = time.monotonic()
+        candidates: list[tuple[ManagedSession, float]] = []
+        for sid, managed in list(self.sessions.items()):
+            if managed.status != "running":
+                continue
+            if sid in self._disconnecting:
+                continue
+            last_act = managed.last_activity
+            if last_act is None:
+                continue
+            age = now - last_act
+            if age < threshold:
+                continue
+            candidates.append((managed, age))
+
+        for managed, age in candidates:
+            sid = managed.session_id
+            reason = (
+                f"watchdog: no assistant activity for {age:.0f}s "
+                f"(threshold={threshold}s)"
+            )
+            logger.warning(
+                "Watchdog: marking stuck session as interrupted "
+                "session_id=%s status=%s age=%.1fs",
+                sid, managed.status, age,
+            )
+            try:
+                await self._mark_session_terminal(managed, "interrupted", reason)
+            except Exception:
+                logger.exception(
+                    "watchdog: _mark_session_terminal failed session_id=%s", sid
+                )
+                continue
+            # Best-effort: ask the actor to stop. If the SDK is truly dead
+            # (the typical case for a stuck session), send_interrupt will
+            # hang, so use a short timeout and fall back to force-cancel.
+            try:
+                await asyncio.wait_for(managed.send_interrupt(), timeout=3.0)
+            except asyncio.TimeoutError:
+                try:
+                    actor = getattr(managed, "actor", None)
+                    if actor is not None:
+                        await asyncio.wait_for(actor.cancel_and_wait(), timeout=3.0)
+                except Exception:
+                    logger.debug(
+                        "watchdog: actor force-cancel failed session_id=%s", sid
+                    )
+            except Exception:
+                try:
+                    actor = getattr(managed, "actor", None)
+                    if actor is not None:
+                        await asyncio.wait_for(actor.cancel_and_wait(), timeout=3.0)
+                except Exception:
+                    logger.debug(
+                        "watchdog: actor force-cancel failed session_id=%s", sid
+                    )
+        return len(candidates)
+
+    async def _watchdog_loop(self) -> None:
+        """Background watchdog loop: tick every N seconds.
+
+        Two complementary scans per tick:
+        1. ``_watchdog_once`` -> main sessions stuck in ``running`` state.
+        2. ``_watchdog_subagents_once`` -> sub-agent JSONL transcripts
+           whose mtime is stale (orphan sub-agents from completed parents).
+        """
+        interval = self._WATCHDOG_INTERVAL_SECONDS
+        while True:
+            try:
+                await asyncio.sleep(interval)
+                await self._watchdog_once()
+                await self._watchdog_subagents_once()
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("watchdog loop tick failed")
+
+
+    async def _watchdog_subagents_once(self) -> int:
+        """Scan sub-agent JSONL transcripts for stuck async tasks and mark them.
+
+        Sub-agents dispatched via the SDK ``Agent`` tool run as background
+        async tasks inside the parent's SDK client. If the parent session
+        completes (or is interrupted) the SDK is *supposed* to wait for its
+        sub-agents to finish, but the SDK has a known state-machine bug
+        where the parent reports "completed" while the sub-agent is still
+        running in a separate async context with no parent supervising it.
+        The result is an orphan sub-agent whose ``agent-*.jsonl`` keeps
+        growing (or freezes) without anyone noticing. The project UI has
+        no way to distinguish "still working" from "abandoned".
+
+        This watchdog fills the gap: for every session we look at
+        ``~/.claude/projects/{cwd_dash}/{session_id}/subagents/agent-*.jsonl``
+        and, if the file's mtime is older than the same threshold used for
+        the main-session watchdog, append a synthetic
+        ``{type: "system", subtype: "watchdog_killed", ...}`` entry. The
+        frontend picks this up via the SSE stream and shows a clear error,
+        so the user can retry without waiting for a phantom background task.
+
+        We never delete the orphan files - they are the audit trail.
+
+        Threshold: same as the main-session watchdog
+        (``ASSISTANT_STUCK_TIMEOUT_SECONDS``). Intentionally no separate
+        env var: a sub-agent that needs more than 5 minutes of wall-clock
+        with no I/O is broken; if a real workload genuinely takes that long
+        the SDK is keeping ``last_activity`` (file mtime) fresh, so the
+        watchdog will not fire.
+        """
+        import json as _json
+        threshold = self._WATCHDOG_STUCK_TIMEOUT_SECONDS
+        now = time.monotonic()
+        killed = 0
+        # Claude SDK stores per-session transcripts under
+        # ``$CLAUDE_PROJECTS_DIR/{cwd_with_slashes_replaced_by_dashes}/{session_id}/subagents/``.
+        # Default ``CLAUDE_PROJECTS_DIR`` is ``~/.claude/projects/``.
+        projects_root_env = os.environ.get("CLAUDE_PROJECTS_DIR", "").strip()
+        if projects_root_env:
+            claude_projects_root = Path(projects_root_env).expanduser()
+        else:
+            claude_projects_root = Path.home() / ".claude" / "projects"
+        if not claude_projects_root.is_dir():
+            return 0
+        for sid, managed in list(self.sessions.items()):
+            if managed.status not in ("running", "completed"):
+                continue
+            project_name = managed.project_name
+            if not project_name:
+                continue
+            try:
+                project_cwd = self._resolve_project_cwd(project_name)
+            except Exception:
+                continue
+            if project_cwd is None:
+                continue
+            cwd_dash = str(project_cwd).replace("/", "-")
+            sub_dir = claude_projects_root / cwd_dash / sid / "subagents"
+            if not sub_dir.is_dir():
+                continue
+            for jsonl in sub_dir.glob("agent-*.jsonl"):
+                try:
+                    mtime = jsonl.stat().st_mtime
+                except OSError:
+                    continue
+                age = now - mtime
+                if age < threshold:
+                    continue
+                # Avoid double-killing: check the last 4 KB of the file
+                # for our watchdog marker.
+                try:
+                    with jsonl.open("r", encoding="utf-8") as f:
+                        f.seek(0, 2)
+                        size = f.tell()
+                        f.seek(max(0, size - 4096))
+                        tail = f.read()
+                except OSError:
+                    continue
+                if '"subtype": "watchdog_killed"' in tail:
+                    # Already marked by a prior tick.
+                    continue
+                # Append a synthetic entry. Same shape as the SDK's own
+                # ``system`` messages, so downstream code that filters on
+                # ``type == "system"`` picks it up consistently.
+                reason = (
+                    f"watchdog: sub-agent no I/O for {age:.0f}s "
+                    f"(threshold={threshold}s)"
+                )
+                kill_entry = _json.dumps({
+                    "type": "system",
+                    "subtype": "watchdog_killed",
+                    "reason": reason,
+                    "agentId": "watchdog",
+                    "sessionId": sid,
+                    "isSidechain": True,
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+                }, ensure_ascii=False)
+                try:
+                    with jsonl.open("a", encoding="utf-8") as f:
+                        f.write(kill_entry + "\n")
+                except OSError:
+                    logger.debug("watchdog: failed to append kill entry to %s", jsonl)
+                    continue
+                logger.warning(
+                    "Watchdog: killing stuck sub-agent %s session_id=%s age=%.1fs",
+                    jsonl.name, sid, age,
+                )
+                killed += 1
+        return killed
+
+    def start_watchdog(self) -> None:
+        """Spawn the periodic watchdog task. Idempotent."""
+        if (
+            getattr(self, "_watchdog_task", None) is not None
+            and not self._watchdog_task.done()
+        ):
+            return
+        self._watchdog_task = asyncio.create_task(self._watchdog_loop())
+        logger.info(
+            "Session watchdog started: interval=%ds stuck_threshold=%ds",
+            self._WATCHDOG_INTERVAL_SECONDS,
+            self._WATCHDOG_STUCK_TIMEOUT_SECONDS,
+        )
+
+    async def stop_watchdog(self) -> None:
+        """Cancel the watchdog task. Used during graceful shutdown."""
+        task = getattr(self, "_watchdog_task", None)
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(BaseException):
+                await task
+        self._watchdog_task = None
+
     @staticmethod
     def _resolve_result_status(
         result_message: dict[str, Any],
@@ -1559,6 +1809,14 @@ class SessionManager:
 
     async def shutdown_gracefully(self, timeout: float = 30.0) -> None:
         """Gracefully shutdown all sessions using the actor teardown path."""
+        # Stop watchdog first: avoid it racing with evict on the same session
+        watchdog = getattr(self, "_watchdog_task", None)
+        if watchdog is not None and not watchdog.done():
+            watchdog.cancel()
+            with contextlib.suppress(BaseException):
+                await watchdog
+        self._watchdog_task = None
+
         patrol = getattr(self, "_patrol_task", None)
         if patrol is not None and not patrol.done():
             patrol.cancel()

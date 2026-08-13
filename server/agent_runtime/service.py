@@ -97,6 +97,13 @@ class AssistantService:
                 sandbox_enabled=bool(sandbox_enabled),
             )
             await self._interrupt_stale_running_sessions()
+            # Start stuck-session watchdog: covers Claude Agent SDK state
+            # machine bug where it stops producing messages after a
+            # tool_result (the agent looks 'running' forever from the
+            # user's perspective). The watchdog force-terminates such
+            # sessions and broadcasts an SSE runtime_status event so the
+            # frontend unblocks immediately.
+            self.session_manager.start_watchdog()
             self._startup_done = True
 
     # ==================== Session CRUD ====================

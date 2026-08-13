@@ -20,6 +20,8 @@ import {
 } from "@/utils/project-changes";
 
 const CHANGE_PRIORITY: Record<string, number> = {
+  // 剧本刚生成属于用户最关心的"完成"事件，排在 episode:updated 之前以确保通知排序靠前
+  "episode:script_generated": 5.5,
   "segment:updated": 0,
   // drama/ad/参考生视频骨架条目的 updated 与 narration 分镜同优先级，四种骨架通知排序一致。
   "drama_scene:updated": 0,
@@ -40,7 +42,13 @@ const CHANGE_PRIORITY: Record<string, number> = {
 };
 
 function getChangePriority(change: ProjectChange): number {
-  if (change.action === "storyboard_ready" || change.action === "video_ready" || change.action === "grid_ready") {
+  if (
+    change.action === "storyboard_ready" ||
+    change.action === "video_ready" ||
+    change.action === "grid_ready" ||
+    change.action === "script_generated" ||
+    change.action === "script_deleted"
+  ) {
     return CHANGE_PRIORITY[change.action] ?? Number.MAX_SAFE_INTEGER;
   }
   return CHANGE_PRIORITY[`${change.entity_type}:${change.action}`] ?? Number.MAX_SAFE_INTEGER;
@@ -325,6 +333,22 @@ export function useProjectEventsSSE(projectName?: string | null): void {
           // Refresh grid list when a grid completes
           if (payload.changes.some((c) => c.action === "grid_ready")) {
             useAppStore.getState().invalidateGrids();
+          }
+        },
+        onScriptSaved(payload) {
+          if (disposed) return;
+          // 立即刷新项目状态——``script_saved`` 是 save_script 写盘后立即广播的高优先级
+          // 事件，不依赖 fingerprint 对比；这里直接 refreshProject 拿最新数据，避免
+          // 改 fingerprint 后再等到下一个 changes 事件才更新。
+          void refreshProject();
+          // 通知用户剧本已生成
+          if (typeof payload?.episode === "number") {
+            pushNotification(
+              tRef.current("script_generated_notification", {
+                episode: payload.episode,
+              }),
+              "success",
+            );
           }
         },
         onProjectDeleted() {

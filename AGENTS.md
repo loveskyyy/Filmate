@@ -115,6 +115,93 @@ ConfigService（`service.py`）→ Repository（持久化 + 密钥脱敏）→ R
 - `sdk_transcript_adapter` / `turn_schema` — transcript 读取与 Turn 规范化（用于历史回放）
 - `sdk_tools/` — SDK 进程内 MCP 工具（enqueue_assets/grid/storyboards/videos + text_generation），供 Skill 调用，由 agent profile manifest 注入
 
+#### Stuck-session watchdog
+
+**Why the watchdog exists** ��Claude Agent SDK has a known state-machine bug: after consuming a `tool_result`, it does not produce the next assistant message. The session stays in `running` forever from the user's perspective, with no SSE terminal event. The user sees a stuck agent with no way to recover.
+
+**Detection** ��`SessionManager.start_watchdog()` (called from `AssistantService.startup()`) spawns a background coroutine that ticks every `ASSISTANT_WATCHDOG_INTERVAL_SECONDS` (default 30s). Each tick calls `_watchdog_once()` which iterates `self.sessions` and force-terminates sessions matching:
+- `managed.status == "running"` AND
+- `time.monotonic() - managed.last_activity >= ASSISTANT_STUCK_TIMEOUT_SECONDS` (default 300s)
+
+Termination goes through `_mark_session_terminal(managed, "interrupted", "watchdog: ...")` which (a) updates the DB, (b) broadcasts a `runtime_status` SSE event so the frontend unblocks, (c) schedules cleanup. This is the same path used for user-initiated interrupts �� no special handling needed downstream.
+
+**`last_activity` refresh** ��Without extra care, the watchdog would fire mid-generation: a 5K-token streaming response might take 2-3 minutes with no `_finalize_turn` call, but `last_activity` would stay at the send_query time. The fix is in `ManagedSession._on_actor_message`: every SDK message that flows through (assistant text / tool_use / tool_result / subagent output / result) refreshes `self.last_activity = time.monotonic()`. The watchdog then only fires when the SDK goes completely silent �� the actual bug signature.
+
+**Frontend UX** ��`useAssistantSession.ts` SSE status handler fires a warning toast on `running -> interrupted` transitions, distinguished from user-initiated interrupts via a `userInterruptRef` flag (set in the `interrupt()` callback, reset in the status handler). i18n key: `assistant_watchdog_interrupted_toast` (zh/en/vi).
+
+**Companion: cold-start cleanup** ��`AssistantService._interrupt_stale_running_sessions()` runs once at startup and bulk-updates every `agent_sessions` row with `status='running'` to `interrupted` (covers service crashes / container restarts). The watchdog covers hot runtime. Together they ensure users never see a 'stuck running' session.
+
+**Tuning** ��Two env vars on the `new-filmate` container:
+- `ASSISTANT_STUCK_TIMEOUT_SECONDS=300` (5 min) ��threshold. Normal generations (including subagent calls) should be well under this.
+- `ASSISTANT_WATCHDOG_INTERVAL_SECONDS=30` ��scan frequency. No need to tune higher; each scan is O(N) over `self.sessions`.
+
+**Smoke test** ��Run inside the container:
+```python
+# /tmp/test_watchdog_inj.py
+import asyncio, time
+from server.agent_runtime.session_manager import SessionManager, ManagedSession
+from server.agent_runtime.session_store import SessionMetaStore
+from server.agent_runtime.event_log import EventLogStore
+from lib import PROJECT_ROOT
+
+class FakeActor:
+    async def cancel_and_wait(self): return
+
+async def main():
+    sm = SessionMetaStore()
+    test_id = f"test-stuck-{int(time.time())}"
+    await sm.create("test-proj", test_id)
+    fake = ManagedSession(session_id=test_id, actor=FakeActor(), status="running", project_name="test-proj")
+    fake.last_activity = time.monotonic() - 600  # 10 min stale
+    mgr = SessionManager(project_root=PROJECT_ROOT, data_dir=PROJECT_ROOT/"projects"/".agent_data", meta_store=sm, projects_root=PROJECT_ROOT/"projects", event_log_store=EventLogStore())
+    mgr._WATCHDOG_STUCK_TIMEOUT_SECONDS = 5
+    mgr.sessions[test_id] = fake
+    print(f"[BEFORE] {fake.status} age={time.monotonic()-fake.last_activity:.0f}s")
+    await mgr._watchdog_once()
+    print(f"[AFTER]  {fake.status} db={(await sm.get(test_id)).status}")
+    await sm.delete(test_id)
+asyncio.run(main())
+```
+```bash
+docker cp /tmp/test_watchdog_inj.py deploy-new-filmate-1:/tmp/
+docker exec deploy-new-filmate-1 bash -c 'cd /app && uv run python /tmp/test_watchdog_inj.py'
+```
+Expected: `Watchdog: marking stuck session as interrupted ... age=600.0s` + `[AFTER] interrupted db=interrupted`.
+
+#### Auth gate split: login is open, admin gating is per-route
+
+**The wrong shape** (pre-2026-08-10): `/api/v1/users/login` had a hard
+`if user.role != "admin"` check. This blocked every non-admin user —
+including project owners with `role="user"` — from reaching the product
+UI. The frontend LoginPage calls this endpoint, so the 403 "只有管理员
+才能登录后台" was the first thing any non-admin user saw.
+
+**The right shape**: login accepts any authenticated user; admin-only
+operations gate at the route level via `require_admin`.
+
+- `server/auth.py` exports `require_admin` (a `Depends` callable that
+  403s non-admin tokens with `requires admin role`).
+- `server/routers/users.py` removed the login check.
+- The user-CRUD routes (list / get / create / update / delete / credits)
+  declare `dependencies=[Depends(require_admin)]` — admin functionality
+  stays admin-only.
+
+**Why this matters**: the role distinction (`admin` vs `user`) is for
+admin functionality (user management, system config, credits). It
+should not gate the login form itself — that would also lock out
+project owners, who are the people who actually need to USE the product.
+The two responsibilities are independent.
+
+**Adding more admin-only routes**: drop `dependencies=[Depends(require_admin)]`
+on the route decorator. Do NOT add a role check inside the function body
+(use the dependency, not an inline `if user.role != "admin"`).
+
+**Inconsistency note**: `/api/v1/auth/token` (OAuth2 form-encoded) was
+already role-agnostic. The frontend LoginPage uses `/api/v1/users/login`
+(JSON body) which had the wrong check. The two login endpoints are
+intentionally non-duplicate (different request shapes for different
+clients); the fix is the per-route gate, not removing either endpoint.
+
 ### lib/i18n/ — 国际化
 
 后端翻译层，支持 `zh`/`en`/`vi` 三种语言。`{zh,en,vi}/` 各文件按命名空间拆分：`errors`（错误与校验）、`providers`（供应商名称/描述）、`assets`（资产相关消息）、`emails`（邮件模板）、`system`（系统消息）、`templates`（模板消息）。

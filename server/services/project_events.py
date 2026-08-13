@@ -23,6 +23,7 @@ from lib.project_change_hints import (
     project_change_source,
     register_project_change_batch_listener,
     register_project_change_listener,
+    register_script_saved_listener,
 )
 from lib.project_manager import ProjectManager, effective_mode
 from lib.script_skeleton import SKELETONS, resolve_script_kind
@@ -108,6 +109,7 @@ class ProjectEventService:
         self._channels: dict[str, _ProjectChannel] = {}
         self._listener_unregister = None
         self._batch_listener_unregister = None
+        self._script_saved_unregister = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._pending_batch_tasks: set[asyncio.Task] = set()
 
@@ -117,6 +119,7 @@ class ProjectEventService:
         self._loop = asyncio.get_running_loop()
         self._listener_unregister = register_project_change_listener(self._on_hint)
         self._batch_listener_unregister = register_project_change_batch_listener(self._on_batch_hint)
+        self._script_saved_unregister = register_script_saved_listener(self._on_script_saved)
 
     async def shutdown(self) -> None:
         unregister = self._listener_unregister
@@ -127,6 +130,10 @@ class ProjectEventService:
         self._batch_listener_unregister = None
         if batch_unregister is not None:
             batch_unregister()
+        script_saved_unregister = self._script_saved_unregister
+        self._script_saved_unregister = None
+        if script_saved_unregister is not None:
+            script_saved_unregister()
 
         tasks = [channel.task for channel in self._channels.values() if channel.task is not None]
         tasks.extend(self._pending_batch_tasks)
@@ -328,6 +335,53 @@ class ProjectEventService:
         )
         self._pending_batch_tasks.add(task)
         task.add_done_callback(self._pending_batch_tasks.discard)
+
+    def _on_script_saved(
+        self,
+        project_name: str,
+        script_filename: str,
+        episode: int | None,
+    ) -> None:
+        """剧本保存事件立即广播（与 _on_hint 的 0.5s 轮询等待并行的高优先级通道）。
+
+        由 :func:`lib.project_change_hints.emit_script_saved_hint` 在
+        ``save_script`` 写盘之后同步调用，在事件循环线程外因此用
+        ``call_soon_threadsafe`` 投递。
+        """
+        loop = self._loop
+        if loop is None or loop.is_closed():
+            return
+        loop.call_soon_threadsafe(
+            self._do_broadcast_script_saved,
+            project_name,
+            script_filename,
+            episode,
+        )
+
+    def _do_broadcast_script_saved(
+        self,
+        project_name: str,
+        script_filename: str,
+        episode: int | None,
+    ) -> None:
+        channel = self._channels.get(project_name)
+        if channel is None or not channel.sse.has_subscribers:
+            # 没订阅者：用户离开项目页时 hint 落空；下次回到项目页由 watch task
+            # 发 snapshot 自动带新状态。无需做"补发"——下次的 snapshot 就是权威。
+            return
+        payload = {
+            "project_name": project_name,
+            "script_filename": script_filename,
+            "episode": episode,
+            "saved_at": _utc_now_iso(),
+        }
+        channel.sse.broadcast(("script_saved", payload))
+        logger.info(
+            "script_saved broadcast project=%s script=%s episode=%s",
+            project_name,
+            script_filename,
+            episode,
+        )
 
     async def _async_rebuild_and_broadcast(
         self,
@@ -1017,6 +1071,59 @@ class ProjectEventService:
         current_scripts: dict[str, Any],
     ) -> list[dict[str, Any]]:
         changes: list[dict[str, Any]] = []
+
+        # 新增剧本文件：原实现只迭代 ``previous ∩ current``，新增的剧本文件被吞掉，
+        # 导致 save_script 触发的 ``changes`` 事件里看不到任何条目、前端没有可
+        # 通知的差分——而 script_saved 通道虽然补了立即广播，但若用户没在项目页
+        # 上（例如 chat 面板发起的子代理任务），channels 不存在就完全静默；用户
+        # 回到项目页时 watch task 第一次扫描只设 snapshot、不发 changes，前端
+        # onSnapshot 又只在 fingerprint 变化时刷新——结果：剧本文件已落盘但前端
+        # 没有任何提示。补上 created/deleted 两路差分，让 ``changes`` 事件本身
+        # 也能告诉前端"有剧本文件刚生成"。
+        for script_file in sorted(set(current_scripts) - set(previous_scripts)):
+            script_meta = current_scripts[script_file]
+            episode = script_meta.get("episode") if isinstance(script_meta, dict) else None
+            episode_int = episode if isinstance(episode, int) else None
+            focus = (
+                {
+                    "pane": "episode",
+                    "episode": episode_int,
+                    "anchor_type": "script",
+                    "anchor_id": script_file,
+                }
+                if episode_int is not None
+                else None
+            )
+            changes.append(
+                self._build_entity_change(
+                    entity_type="episode",
+                    action="script_generated",
+                    entity_id=script_file,
+                    label=f"第 {episode_int} 集剧本" if episode_int is not None else f"剧本 {script_file}",
+                    script_file=script_file,
+                    episode=episode_int,
+                    focus=focus,
+                    important=True,
+                )
+            )
+
+        for script_file in sorted(set(previous_scripts) - set(current_scripts)):
+            script_meta = previous_scripts[script_file]
+            episode = script_meta.get("episode") if isinstance(script_meta, dict) else None
+            episode_int = episode if isinstance(episode, int) else None
+            changes.append(
+                self._build_entity_change(
+                    entity_type="episode",
+                    action="script_deleted",
+                    entity_id=script_file,
+                    label=f"第 {episode_int} 集剧本" if episode_int is not None else f"剧本 {script_file}",
+                    script_file=script_file,
+                    episode=episode_int,
+                    focus=None,
+                    important=False,
+                )
+            )
+
         for script_file in sorted(set(previous_scripts) & set(current_scripts)):
             previous_meta = previous_scripts[script_file]
             current_meta = current_scripts[script_file]

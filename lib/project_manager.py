@@ -42,7 +42,10 @@ from lib.profile_manifest import (
 from lib.profile_manifest import (
     force_resync_profile as _force_resync_profile,
 )
-from lib.project_change_hints import emit_project_change_hint
+from lib.project_change_hints import (
+    emit_project_change_hint,
+    emit_script_saved_hint,
+)
 from lib.script_editor import ScriptEditError, resolve_items
 from lib.style_templates import LEGACY_STYLE_MAP, resolve_template_prompt
 
@@ -839,6 +842,19 @@ class ProjectManager:
         get_media_storage(self.projects_root).sync_project_paths(
             output_path.parents[1],
             [f"scripts/{output_path.name}"],
+        )
+
+        # 立即广播"剧本已保存"事件，绕过 project_change_hint 的 0.5s 轮询等待——
+        # 见 lib.project_change_hints.emit_script_saved_hint 注释。这里先于 sync 发出，
+        # 前端能在毫秒级拿到第 N 集剧本已生成的通知，并立刻发起 refreshProject；
+        # sync_episode_from_script 之后的 emit_project_change_hint 还会再触发一次
+        # ``changes`` 事件（带 episode:updated 差分），前端会再次刷新——两次刷新幂等，
+        # 后端无重复广播开销。
+        episode_value = script.get("episode")
+        emit_script_saved_hint(
+            project_name,
+            f"scripts/{output_path.name}",
+            episode_value if isinstance(episode_value, int) else None,
         )
 
         # 同步到 project.json，保证 script 写入与元数据同步是单一事务

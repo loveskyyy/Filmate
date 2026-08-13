@@ -515,6 +515,25 @@ async def get_current_user(
     return user
 
 
+async def require_admin(
+    user: CurrentUserInfo = Depends(get_current_user),
+) -> CurrentUserInfo:
+    """Reject non-admin users with 403.
+
+    Use as a route dependency to gate admin-only operations (user
+    management, system config, credits). Login endpoints (auth/token,
+    users/login) should NOT use this — the login gate is open to all
+    authenticated users; per-route admin gating is the right place
+    to enforce role separation.
+    """
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="requires admin role",
+        )
+    return user
+
+
 async def get_current_user_flexible(
     token: Annotated[str | None, Depends(oauth2_scheme_optional)] = None,
     query_token: str | None = Query(None, alias="token"),
