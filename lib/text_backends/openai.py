@@ -129,6 +129,7 @@ class OpenAITextBackend:
 
         if request.response_schema:
             schema = resolve_schema(request.response_schema)
+            _enforce_no_extra_properties(schema)
             kwargs["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
@@ -246,3 +247,21 @@ async def _instructor_fallback(
         max_tokens=request.max_output_tokens,
         token_param=token_param,
     )
+
+
+# === OpenAI 严格模式 schema 补全 ===
+def _enforce_no_extra_properties(schema):
+    """递归给所有 type=object 补 additionalProperties=false。
+
+    OpenAI strict=true 模式要求 schema 中所有 object 类型显式声明
+    additionalProperties=false；Pydantic v2 model_json_schema() 默认不输出该字段，
+    因此补齐。**仅在 OpenAI 路径调用**，不影响 Gemini / Ark / Grok 各自后端。
+    """
+    if isinstance(schema, dict):
+        if schema.get("type") == "object" and "additionalProperties" not in schema:
+            schema["additionalProperties"] = False
+        for value in schema.values():
+            _enforce_no_extra_properties(value)
+    elif isinstance(schema, list):
+        for item in schema:
+            _enforce_no_extra_properties(item)
