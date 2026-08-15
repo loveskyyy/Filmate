@@ -98,6 +98,23 @@ def test_remote_project_without_registered_owner_is_hidden(tmp_path, monkeypatch
     assert pm.is_project_owned_by("cloud-demo", 2) is True
 
 
+def test_user_scoped_listing_uses_owner_registry_without_remote_scan(tmp_path, monkeypatch):
+    storage = _CloudStorage()
+
+    def _unexpected_remote_scan() -> list[str]:
+        raise AssertionError("用户项目列表不应扫描全部云端项目")
+
+    storage.list_project_names = _unexpected_remote_scan
+    monkeypatch.setattr(project_manager_module, "get_media_storage", lambda _root: storage, raising=False)
+    pm = ProjectManager(tmp_path / "projects")
+    pm._project_owners_path.write_text(
+        json.dumps({"schema_version": 1, "owners": {"cloud-demo": 2}}),
+        encoding="utf-8",
+    )
+
+    assert pm.list_projects(user_id=2) == ["cloud-demo"]
+
+
 def test_local_project_is_uploaded_on_first_cloud_activation(tmp_path, monkeypatch):
     projects_root = tmp_path / "projects"
     project_dir = projects_root / "local-demo"

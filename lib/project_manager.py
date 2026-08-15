@@ -7,12 +7,12 @@
 import copy
 import errno
 import json
-import tempfile
 import logging
 import os
 import re
 import secrets
 import shutil
+import tempfile
 import time
 import unicodedata
 from collections.abc import Callable, Mapping
@@ -228,26 +228,33 @@ class ProjectManager:
     def list_projects(self, *, user_id: int | None = None) -> list[str]:
         """列出项目；传入 ``user_id`` 时仅返回该用户拥有的项目。"""
         local_names = [d.name for d in self.projects_root.iterdir() if d.is_dir() and not d.name.startswith((".", "_"))]
+        if user_id is not None:
+            # 所有权注册表是用户项目归属的单一真相源。用户作用域查询直接从注册表
+            # 构造云端项目候选，避免先扫描全部租户的对象存储项目再做本地过滤。
+            with self._project_owners_lock():
+                owners = self._read_project_owners_unlocked()
+            local_name_set = set(local_names)
+            visible_local = [name for name in local_names if owners.get(name) == user_id]
+            if user_id == DEFAULT_USER_ID:
+                # 仅本地、未登记的存量项目归默认用户；云端项目即使已物化到本地，
+                # 没有 owner 记录也必须继续隐藏。这里只检查少量 legacy 候选，
+                # 不再枚举全部云端项目。
+                unowned_local = [name for name in local_names if name not in owners]
+                storage = get_media_storage(self.projects_root)
+                visible_local.extend(
+                    name
+                    for name in unowned_local
+                    if not (storage.enabled and storage.project_file_exists(name, self.PROJECT_FILE))
+                )
+            cloud_only_owned = [
+                name for name, owner_id in owners.items() if owner_id == user_id and name not in local_name_set
+            ]
+            return [*visible_local, *cloud_only_owned]
+
         storage = get_media_storage(self.projects_root)
         remote_names = storage.list_project_names() if storage.enabled else []
         names = list(dict.fromkeys([*local_names, *remote_names]))
-        if user_id is None:
-            return names
-        with self._project_owners_lock():
-            owners = self._read_project_owners_unlocked()
-        local_name_set = set(local_names)
-        remote_name_set = set(remote_names)
-        return [
-            name
-            for name in names
-            if owners.get(name) == user_id
-            or (
-                name in local_name_set
-                and name not in remote_name_set
-                and name not in owners
-                and user_id == DEFAULT_USER_ID
-            )
-        ]
+        return names
 
     @property
     def _project_owners_path(self) -> Path:
@@ -376,6 +383,7 @@ class ProjectManager:
                 mode="w", encoding="utf-8", prefix=".filmate-", suffix=".json", delete=False
             ) as tmp:
                 import json as _json
+
                 _json.dump(initial_payload, tmp, ensure_ascii=False, indent=2)
                 tmp_path = Path(tmp.name)
             try:
