@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from lib import PROJECT_ROOT
 from lib.i18n import Translator, get_locale
 from server.agent_runtime.models import SessionMeta
-from server.agent_runtime.service import AssistantService
+from server.agent_runtime.service import AssistantService, _PreflightCreditsError
 from server.agent_runtime.session_manager import AgentStartupError, SessionCapacityError
 from server.auth import CurrentUser, CurrentUserFlexible
 
@@ -98,6 +98,11 @@ async def send_message(
         raise HTTPException(
             status_code=502,
             detail=_t("agent_startup_failed", details=str(exc)),
+        )
+    except _PreflightCreditsError as exc:
+        raise HTTPException(
+            status_code=402,
+            detail=_t("insufficient_credits", credits=exc.credits, user_id=exc.user_id),
         )
     except Exception:
         logger.exception("请求处理失败")

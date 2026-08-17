@@ -43,6 +43,25 @@ from server.agent_runtime.session_manager import SessionManager
 from server.agent_runtime.session_store import SessionMetaStore
 
 
+# 在 send_or_create 顶部做积分前置检查时,user_id 不在签名里:目前所有调用都
+# 走同一个 admin user(user_id=1)。简单粗暴地把 user_id=1 写死。如果未来
+# 接入多用户体系,这里需要改成从 Request 提取。
+_RESOLVE_USER_ID = 1
+
+
+def _resolve_user_id_from_request() -> int:
+    return _RESOLVE_USER_ID
+
+
+class _PreflightCreditsError(Exception):
+    """积分不足 — 应被路由层翻译成 HTTP 402。"""
+
+    def __init__(self, user_id: int, credits: int) -> None:
+        self.user_id = user_id
+        self.credits = credits
+        super().__init__(f"insufficient credits: user_id={user_id} credits={credits}")
+
+
 class AssistantService:
     def __init__(self, project_root: Path):
         self.project_root = Path(project_root)
@@ -225,6 +244,25 @@ class AssistantService:
         blocks = echo_blocks if echo_blocks is not None else [{"type": "text", "text": text}]
         return build_user_entry(blocks)
 
+
+    async def _preflight_user_credits(self, user_id: int) -> None:
+        """Send 前置检查：积分为 0 时抛 _PreflightCreditsError。
+
+        避免把消息送进 SDK 后才被拒（LLM 调用依然走通,扣减失败但 agent 的
+        答复已经在写,SSE 会一直 deliver,用户看不到任何反馈）。0 积分直接
+        在受理阶段拒绝,返回清晰错误。
+        """
+        from sqlalchemy import select
+        from lib.db import async_session_factory
+        from lib.db.models.user import User
+
+        async with async_session_factory() as session:
+            result = await session.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+            credits = (user.credits if user else None) or 0
+            if credits <= 0:
+                raise _PreflightCreditsError(user_id=user_id, credits=credits)
+
     async def send_or_create(
         self,
         project_name: str,
@@ -242,6 +280,14 @@ class AssistantService:
         幂等键，重试不产生重复条目。
         """
         self.pm.get_project_path(project_name)  # Validate project
+
+        # 提前积分检查：用户积分为 0 时立即返回 402,避免 agent 启动后调用 LLM
+        # 才被拒（导致前端 SSE 长期收不到事件,按钮卡在"运行中"状态）。
+        # 代理类供应商按 1 积分的最小阈值粗判;余额不足时直接拒绝受理。
+        try:
+            await self._preflight_user_credits(_resolve_user_id_from_request())
+        except _PreflightCreditsError as exc:
+            raise exc
 
         if session_id:
             # Existing session

@@ -11,6 +11,7 @@ MESSAGES = {
     "jianying_path_illegal": "Draft directory path contains illegal characters",
     "jianying_export_failed": "Jianying draft export failed, please try again later",
     "title_required": "Project title cannot be empty",
+    "insufficient_credits": "Insufficient credits to continue (current balance: {credits})",
     "project_exists": "Project '{name}' already exists",
     "script_not_found": "Script '{name}' does not exist",
     "scene_not_found": "Scene '{id}' does not exist",
