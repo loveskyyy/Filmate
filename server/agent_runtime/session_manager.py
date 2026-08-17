@@ -887,8 +887,9 @@ class SessionManager:
             managed._cleanup_task.cancel()
             managed._cleanup_task = None
 
-        if managed.status == "running":
-            raise ValueError("会话正在处理中，请等待当前回复完成后再发送新消息")
+        # 多用户并发：不再因 status=="running" 拒绝新消息。
+        # SessionActor._drive_query 已支持把并发到达的 query 排队(FIFO),
+        # 每个用户依次拿到完整的 agent 回合,不需要前端排队等待。
 
         log_entry: dict[str, Any] | None = None
         if user_entry is not None:
