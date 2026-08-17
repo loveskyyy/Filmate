@@ -11,6 +11,7 @@ MESSAGES = {
     "jianying_path_illegal": "草稿目录路径包含非法字符",
     "jianying_export_failed": "剪映草稿导出失败，请稍后重试",
     "title_required": "项目标题不能为空",
+    "insufficient_credits": "积分不足,无法继续对话 (当前余额: {credits})",
     "project_exists": "项目 '{name}' 已存在",
     "script_not_found": "剧本 '{name}' 不存在",
     "scene_not_found": "场景 '{id}' 不存在",

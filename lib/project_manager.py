@@ -387,10 +387,19 @@ class ProjectManager:
                 _json.dump(initial_payload, tmp, ensure_ascii=False, indent=2)
                 tmp_path = Path(tmp.name)
             try:
-                object_key = storage.project_object_key(name, self.PROJECT_FILE)
-                storage._upload_file(tmp_path, object_key)
+                if storage.enabled:
+                    object_key = storage.project_object_key(name, self.PROJECT_FILE)
+                    storage._upload_file(tmp_path, object_key)
+                else:
+                    # 本地落盘：qiniu 未启用时,project.json 走本地文件系统,
+                    # 后续 save_project / sync_project_paths 都按本地路径走。
+                    project_dir.mkdir(parents=True, exist_ok=True)
+                    import shutil as _shutil
+                    _shutil.move(str(tmp_path), str(project_dir / self.PROJECT_FILE))
+                    tmp_path = None  # 已移走,别再 unlink
             finally:
-                tmp_path.unlink(missing_ok=True)
+                if tmp_path is not None:
+                    tmp_path.unlink(missing_ok=True)
             upload_started = True
 
             # 2) 同步 agent profile 到 .claude/ (agent runtime,保留在本地 — agent 进程在容器内要读)
