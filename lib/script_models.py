@@ -584,6 +584,32 @@ def merge_drama_visual_into_scenes(
     return merged
 
 
+# ============ 参考生视频时长 / 镜头数共用常量 ============
+# 定义前置于 Ad 区：``AdReferenceUnit.shot_ids`` 与 ``ReferenceVideoUnit.shots``
+# 共用 ``REFERENCE_UNIT_MAX_SHOTS``，常量必须在两个类定义之前就绑定。
+
+#: 参考生视频路径下单镜头时长的合法区间（秒）。短切节奏赖此成立：
+#: 不按供应商 supported_durations 枚举，而是 1-15 自由整数。
+#: ``Shot.duration``、ad + reference 路径的 ``AdShot.duration_seconds`` 与
+#: ``DataValidator`` 共用此真相源。
+#: [FIX-B 时长自由化] 区间上限（15）同时作为 unit 总时长上限的兼容兜底
+#: （见 ``resolve_reference_unit_max_duration``）。
+REFERENCE_SHOT_DURATION_RANGE: tuple[int, int] = (1, 15)
+
+#: [FIX-A 台词保真] 单 unit 内的 shot 数上限。
+#: 原为硬编码 max_length=4，在台词密集处形成结构性瓶颈：叠加当时 unit 总时长受
+#: supported_durations 枚举锁定后，单 unit 承载量固定在约 32-48 个中文字；台词超量时
+#: LLM 无法通过增加 shot 来容纳（Structured Outputs 会拒绝第 5 个 shot 使整个响应
+#: 校验失败），唯一出路是删减 / 概括台词。
+#: 放开至 12 让「同一 clip 内多切几个短镜头」成为可选项，从而把长台词完整装下。
+#: 下游无 4-shot 假设（已核查 data_validator / shot_parser.assemble_shots_text /
+#: compute_duration_from_shots / reference_video_tasks / routers / 前端组件，
+#: 均只做遍历、求和或计数），故放开不影响既有流程。
+#: 单 shot 最短 1 秒（见 REFERENCE_SHOT_DURATION_RANGE），故 12 个 shot 在
+#: max_duration=12 时仍是合法组合上界。
+REFERENCE_UNIT_MAX_SHOTS: int = 12
+
+
 # ============ 广告/短片模式（Ad） ============
 
 
@@ -645,7 +671,15 @@ class AdReferenceUnit(BaseModel):
     model_config = _STRICT_CONFIG
 
     unit_id: str = Field(description="格式 E{集}U{序号}")
-    shot_ids: list[str] = Field(min_length=1, max_length=4, description="成员镜头 ID（连续、1-4 个）")
+    # [FIX-B 时长自由化] 原为 max_length=4，与 reference_video 主路径的
+    # ``REFERENCE_UNIT_MAX_SHOTS``（已放开到 12）不同步：ad + reference 路径下
+    # 分组器把连续 shots 聚成 unit，4 个镜头的上限会在台词 / 口播密集处把 unit
+    # 承载量锁死，反而逆向鼓励「少切镜头、每镜拉长」的机械均分。现与主路径对齐。
+    shot_ids: list[str] = Field(
+        min_length=1,
+        max_length=REFERENCE_UNIT_MAX_SHOTS,
+        description=f"成员镜头 ID（连续、1-{REFERENCE_UNIT_MAX_SHOTS} 个）",
+    )
     references: list[AdUnitReference] = Field(default_factory=list, description="继承的参考集，产品在前")
     generated_assets: GeneratedAssets = Field(default_factory=GeneratedAssets, description="生成资源状态")
 
@@ -673,12 +707,8 @@ class AdEpisodeScript(BaseModel):
 
 
 # ============ 参考生视频模式（Reference Video） ============
-
-#: 参考生视频路径下单镜头时长的合法区间（秒）。短切节奏赖此成立：
-#: 不按供应商 supported_durations 枚举，而是 1-15 自由整数。
-#: ``Shot.duration``、ad + reference 路径的 ``AdShot.duration_seconds`` 与
-#: ``DataValidator`` 共用此真相源。
-REFERENCE_SHOT_DURATION_RANGE: tuple[int, int] = (1, 15)
+# 注：``REFERENCE_SHOT_DURATION_RANGE`` 与 ``REFERENCE_UNIT_MAX_SHOTS`` 已前置到
+# Ad 区之前定义（因 ``AdReferenceUnit`` 也需引用），此处不重复定义。
 
 #: ad 剧本总时长 vs 项目 target_duration 的偏差观察阈值（比例）。供应商时长枚举
 #: （如 [4,6,8]）的量化误差让总和难精确命中目标，阈值放宽只捕明显跑偏；超阈值
@@ -742,7 +772,12 @@ class ReferenceVideoUnit(BaseModel):
     model_config = _STRICT_CONFIG
 
     unit_id: str = Field(description="格式 E{集}U{序号}")
-    shots: list[Shot] = Field(min_length=1, max_length=4, description="1-4 个 shot")
+    # [FIX-A 台词保真] 原为 max_length=4，见 REFERENCE_UNIT_MAX_SHOTS 的说明。
+    shots: list[Shot] = Field(
+        min_length=1,
+        max_length=REFERENCE_UNIT_MAX_SHOTS,
+        description=f"1-{REFERENCE_UNIT_MAX_SHOTS} 个 shot（同一次生成调用内的镜头切换）",
+    )
     references: list[ReferenceResource] = Field(
         default_factory=list,
         description="按顺序决定 [图N] 编号",
@@ -843,20 +878,34 @@ def _check_duration_in_enum(v, allowed: set[int]):
 
 def _constrained_duration_item(
     item_base: type[BaseModel],
-    duration_spec: tuple[list[str], set[int]],
+    duration_spec: object,
     description: str,
 ) -> type[BaseModel]:
-    """在 ``item_base`` 上把 ``duration_seconds`` 收紧为 string-enum 渲染 + int 校验。
+    """在 ``item_base`` 上把 ``duration_seconds`` 收紧为指定约束。
 
-    ``duration_spec`` 是 ``(str_values, allowed_ints)``——``_duration_literal`` 产出。
+    ``duration_spec`` 支持两种形式：
+
+    1. ``(str_values, allowed_ints)`` 元组——``_duration_literal`` 的产出，
+       渲染为 string-enum + int 成员校验（供应商档位硬约束路径）。
+    2. 已构造好的 ``Annotated`` 类型——直接透传（自由区间路径，如
+       ``build_ad_reference_episode_script_model`` 传入的
+       ``Annotated[int, Field(ge=..., le=...)]``）。
+
+    [FIX-B] 旧版无条件执行 ``str_values, allowed = duration_spec``，导致第 2 种
+    形式抛 ``TypeError: '_AnnotatedAlias' object is not iterable``——
+    ``build_ad_reference_episode_script_model()`` 一调就崩（预存 bug，非本次时长
+    改造引入，但会抵消 ad + reference 路径的自由时长能力，故一并修好）。
     """
-    str_values, allowed = duration_spec
-    annotated_type = Annotated[
-        int,
-        BeforeValidator(lambda v: _coerce_duration_str_to_int(v, allowed)),
-        AfterValidator(lambda v: _check_duration_in_enum(v, allowed)),
-        WithJsonSchema({"type": "string", "enum": str_values}),
-    ]
+    if isinstance(duration_spec, tuple):
+        str_values, allowed = duration_spec
+        annotated_type = Annotated[
+            int,
+            BeforeValidator(lambda v: _coerce_duration_str_to_int(v, allowed)),
+            AfterValidator(lambda v: _check_duration_in_enum(v, allowed)),
+            WithJsonSchema({"type": "string", "enum": str_values}),
+        ]
+    else:
+        annotated_type = duration_spec
     return create_model(
         item_base.__name__,
         __base__=item_base,
@@ -948,19 +997,120 @@ def build_ad_reference_episode_script_model() -> type[BaseModel]:
     )
 
 
-def build_reference_video_script_model(supported_durations: list[int]) -> type[BaseModel]:
-    """构造 unit 总时长被 ``supported_durations`` 枚举硬约束的参考视频剧集模型。
+# ============ [FIX-B 时长自由化] unit 总时长区间约束 ============
 
-    参考视频模式发给供应商 API 的是 ``unit.duration_seconds``（各 shot 时长之和），而非单个 shot——
-    单 shot 只是同一段 clip 内的时间编排。故约束加在 ``ReferenceVideoUnit.duration_seconds`` 这个
-    派生字段上：``Literal[*supported_durations]`` 在 response_schema 里渲染为 ``enum``（单值时为 ``const``，LLM 可见），
-    叠加 ``ReferenceVideoUnit`` 既有的 ``duration_seconds == sum(shots)`` 一致性校验器，等价于强制
-    「各 shot 之和 ∈ supported_durations」。``Shot.duration`` 仍保留 1-15 的合理性上限、不要求单 shot 成员。
+
+def resolve_reference_unit_max_duration(
+    supported_durations: list[int] | None = None,
+    max_duration: int | None = None,
+) -> int:
+    """解析参考视频 unit 的总时长上限（秒）——单一真相源。
+
+    优先级：显式 ``max_duration`` > ``max(supported_durations)`` >
+    ``REFERENCE_SHOT_DURATION_RANGE[1]``（兼容堆底）。三者都沿用同一口径，
+    避免 schema 层、prompt 层与校验层各自推算上限而不一致。
+
+    上限倒推自 supported_durations 的最大值，而非其全集：供应商枚举描述的是
+    「单次生成可选的时长档位」，而 unit 总时长在本模式下只需满足「不超上限」。
     """
-    unit = _constrained_duration_item(
+    if isinstance(max_duration, int) and not isinstance(max_duration, bool) and max_duration > 0:
+        return max_duration
+    if supported_durations:
+        candidates = [int(d) for d in supported_durations if int(d) > 0]
+        if candidates:
+            return max(candidates)
+    return REFERENCE_SHOT_DURATION_RANGE[1]
+
+
+def _check_duration_in_range(v, low: int, high: int):
+    """AfterValidator：转 int 后强制区间校验。
+
+    与 ``_check_duration_in_enum`` 并列存在：枚举路径（narration / drama / ad-storyboard）
+    仍需命中供应商档位；参考视频 unit 总时长走本函数的区间口径。
+    ``WithJsonSchema`` 只改 schema 不改校验，故区间也必须在此显式卡一道。
+    """
+    if not isinstance(v, int) or isinstance(v, bool):
+        raise ValueError(f"duration_seconds={v!r} 不是整数")
+    if v < low or v > high:
+        raise ValueError(f"duration_seconds={v} 超出合法区间 [{low}, {high}]")
+    return v
+
+
+def _range_constrained_duration_item(
+    item_base: type[BaseModel],
+    low: int,
+    high: int,
+    description: str,
+) -> type[BaseModel]:
+    """在 ``item_base`` 上把 ``duration_seconds`` 收紧为「[low, high] 区间内任意整数」。
+
+    schema 仍渲染为 ``type: string``（而非 integer），延续 ``_constrained_duration_item``
+    的避坑策略：miniMax strict json_schema 解析器的 enum 元素类型推断会传染，数字字段
+    夹在 string enum 之后会报 ``Mismatch type string with value number``（详见
+    ``_duration_literal`` docstring）。string + ``pattern`` 既不触发该 bug，也不像 enum
+    会被模型当成答案原样回吐。``BeforeValidator`` 把 "13" 转 int 13，
+    ``AfterValidator`` 卡区间，**对调用方零侵入**（拿到的仍是 ``int``）。
+
+    关键差异：**不写 enum**。枚举会把 LLM 逐步训成「只有整档值能过校验」，
+    进而把每个 unit 都凑到上限（典型症状：5+5+5=15 的机械均分）。
+    """
+    annotated_type = Annotated[
+        int,
+        BeforeValidator(lambda v: _coerce_duration_str_to_int(v, set())),
+        AfterValidator(lambda v: _check_duration_in_range(v, low, high)),
+        WithJsonSchema(
+            {
+                "type": "string",
+                "pattern": r"^[0-9]{1,3}$",
+                "description": f"{low}-{high} 秒之间的整数（字符串形式，如 \"7\"）",
+            }
+        ),
+    ]
+    return create_model(
+        item_base.__name__,
+        __base__=item_base,
+        duration_seconds=(annotated_type, Field(description=description)),
+    )
+
+
+def build_reference_video_script_model(
+    supported_durations: list[int] | None = None,
+    max_duration: int | None = None,
+) -> type[BaseModel]:
+    """构造参考视频剧集模型：unit 总时长受「≤ 上限」的**区间**约束。
+
+    [FIX-B 时长自由化] 旧实现把 ``ReferenceVideoUnit.duration_seconds`` 硬约束为
+    ``supported_durations`` 的**枚举成员**，叠加 ``duration_seconds == sum(shots)``
+    一致性校验器后，等价于强制「各 shot 时长之和 必须精确命中某个档位」。
+    它造成了两个结构性后果：
+
+    1. **硬凑总时长**：模型写出 13 秒的 unit 会被 Instructor / Pydantic 直接拒结，
+       重试几轮后模型“学习”到只有 5 / 10 / 15 能过，于是全部 unit 向上限靠。
+    2. **机械均分镜头**：为了让和精确命中档位，最低阻力的凑法就是 5+5+5=15，
+       导致所有 shot 时长齐头、节奏完全丢失（LLM 在做算术而不是做导演）。
+
+    新实现下，unit 总时长只需满足 ``1 <= duration_seconds <= 上限``，7 / 9 / 13 秒
+    均为合法值，秒数回归为由剧情、节奏与台词字数决定。上限经
+    ``resolve_reference_unit_max_duration`` 解析（显式 max_duration 优先）。
+
+    **保留不变的部分**：``ReferenceVideoUnit._check_duration_consistency``
+    （``duration_seconds == sum(shots)``）仍然生效；``Shot.duration`` 仍受
+    ``REFERENCE_SHOT_DURATION_RANGE`` 约束；台词保真相关的任何约束未被触碰。
+
+    **向后兼容**：两个参数均为可选。旧调用方传位置参数
+    ``build_reference_video_script_model(supported_durations)`` 仍可工作（上限按
+    ``max(supported_durations)`` 推得）；推荐调用方把 MCP ``get_video_capabilities``
+    查到的 ``max_duration`` 显式传入。
+    """
+    high = resolve_reference_unit_max_duration(supported_durations, max_duration)
+    unit = _range_constrained_duration_item(
         ReferenceVideoUnit,
-        _duration_literal(supported_durations),
-        "所有 shot 时长之和，必须取 supported_durations 中的值",
+        1,
+        high,
+        (
+            f"所有 shot 时长之和；只需不超过 {high} 秒即可，"
+            "不必也不应凑满上限，秒数由剧情、节奏与台词长度决定"
+        ),
     )
     return create_model(
         "ReferenceVideoScript",

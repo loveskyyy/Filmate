@@ -154,6 +154,7 @@ class ManagedSession:
     initial_user_entry_error: Exception | None = None
     last_user_prompt: str = ""
     assistant_model: str = ""
+    user_id: int = 0  # 修复：创建 session 的用户 ID
     interrupt_requested: bool = False
     last_activity: float | None = None  # updated on every send/receive
     _cleanup_task: asyncio.Task | None = None  # current cleanup timer (idle TTL or terminal delay)
@@ -302,6 +303,7 @@ class SessionManager:
             else (self.project_root / "projects").resolve()
         )
         self.meta_store = meta_store
+        self._current_session_user_id: int = DEFAULT_USER_ID  # 修复：service 注入
         self.sessions: dict[str, ManagedSession] = {}
         self._disconnecting: set[str] = set()
         self._session_actor_shutdown_timeout: float = 15.0  # total budget for send_disconnect + cancel fallback
@@ -345,7 +347,7 @@ class SessionManager:
             max_turns_provider=lambda: self.max_turns,
             resolve_project_cwd=self._resolve_project_cwd,
             session_factory_provider=lambda: getattr(self, "_session_factory", None),
-            user_id_provider=lambda: getattr(self, "_user_id", DEFAULT_USER_ID),
+            user_id_provider=lambda: getattr(self, "_current_session_user_id", DEFAULT_USER_ID),  # 修复
         )
 
     def configure_sandbox_runtime(self, *, in_docker: bool, sandbox_enabled: bool) -> None:
@@ -519,6 +521,7 @@ class SessionManager:
         locale: str = DEFAULT_LOCALE,
         user_entry: dict[str, Any] | None = None,
         client_key: str | None = None,
+        user_id: int = 0,  # 修复：service.py 注入
     ) -> str:
         """Create a new session via send-first: start actor, send query, wait for sdk_session_id.
 
@@ -526,6 +529,7 @@ class SessionManager:
         sdk_session_id 就绪后由 inbox 任务先写日志（seq 0）再放行等待，权威
         条目落在 ``managed.initial_user_log_entry`` 供受理响应回传。
         """
+        self._current_session_user_id = user_id or DEFAULT_USER_ID  # 修复：session-scoped user_id
         if not SDK_AVAILABLE or ClaudeSDKClient is None:
             raise RuntimeError("claude_agent_sdk is not installed")
 
@@ -563,6 +567,7 @@ class SessionManager:
             status="running",
             project_name=project_name,
             assistant_model=assistant_model,
+            user_id=self._current_session_user_id,  # 修复：使用启动 session 时注入的用户 ID
         )
         if user_entry is not None:
             managed.pending_initial_user_entry = {"entry": user_entry, "client_key": client_key}
@@ -824,7 +829,8 @@ class SessionManager:
                 status=resumed_status,
                 project_name=meta.project_name,
                 assistant_model=assistant_model,
-                resolved_sdk_id=meta.id,  # 标记为已注册，防止重复创建 DB 记录
+                resolved_sdk_id=meta.id,
+                user_id=getattr(meta, "user_id", 0) or self._current_session_user_id,  # 修复：按 session 真实用户扣费
             )
             managed.sdk_id_event.set()  # 已有会话不需要等待 sdk_id
             managed.entry_pipeline = self._build_entry_pipeline(managed)
@@ -861,6 +867,7 @@ class SessionManager:
         locale: str = DEFAULT_LOCALE,
         user_entry: dict[str, Any] | None = None,
         client_key: str | None = None,
+        user_id: int = 0,  # 修复：service.py 注入
     ) -> dict[str, Any] | None:
         """Send a message via the session actor.
 
@@ -872,6 +879,7 @@ class SessionManager:
         与容量校验之后、送入 SDK 之前），返回权威条目供受理响应回传；同一
         ``client_key`` 重试命中既有条目时不再重复送 SDK。
         """
+        self._current_session_user_id = user_id or DEFAULT_USER_ID  # 修复：session-scoped user_id
         managed = await self.get_or_connect(session_id, meta=meta, locale=locale)
         managed.last_activity = time.monotonic()
 
@@ -1035,7 +1043,7 @@ class SessionManager:
             model=resolve_assistant_model(result_msg, managed.assistant_model),
             prompt=managed.last_user_prompt[:500] if managed.last_user_prompt else None,
             provider=PROVIDER_ANTHROPIC,
-            user_id=getattr(self, "_user_id", DEFAULT_USER_ID),
+            user_id=managed.user_id or DEFAULT_USER_ID,  # 修复：按 session 真实用户扣费
         )
         await self.usage_tracker.finish_call(
             call_id,

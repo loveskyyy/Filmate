@@ -148,6 +148,16 @@ class JianyingDraftService:
         content_mode = _script_content_mode(script)
         if content_mode == "ad" and generation_mode == "reference_video":
             return self._collect_ad_reference_unit_clips(script, project_dir)
+        # drama / narration + reference_video：成片是 unit 级视频，数据在 script.video_units[]，
+        # 不在 scenes / segments。按 unit 收集；字幕按 unit.shots[] 派生（drama 有 shot.text，
+        # narration 无单字段字幕源则留空）。
+        if generation_mode == "reference_video":
+            return self._collect_reference_unit_clips(
+                script,
+                project_dir,
+                content_mode=content_mode,
+                language=language,
+            )
         # 内容骨架经规范解析定分镜数组：content_mode 取剧本原值（缺失/未知即 fail-loud，不静默
         # 兜底到 drama）。generation_mode 传 None——ad+参考已在上分支按 unit 收集，本分支只按
         # content_mode 取内容骨架，非 ad 参考路径的 video_units 收集不属本分支职责。
@@ -252,6 +262,79 @@ class JianyingDraftService:
                     "narration_audio_abs": None,
                 }
             )
+        return clips
+
+    def _collect_reference_unit_clips(
+        self,
+        script: dict,
+        project_dir: Path,
+        *,
+        content_mode: str,
+        language: str | None,
+    ) -> list[dict[str, Any]]:
+        """drama / narration + reference_video 路径：按 video_units[] 收集成片。
+
+        字幕：drama 模式的 unit.shots[] 通常带 ``text``（剧情向文案），按 shot.duration_seconds
+        累加 offset 派生有序 span；narration 模式 unit 无单字段字幕源，subtitle 留空。
+        """
+        is_drama = content_mode == "drama"
+        clips: list[dict[str, Any]] = []
+        units = script.get("video_units")
+        for unit in units if isinstance(units, list) else []:
+            if not isinstance(unit, dict):
+                continue
+            assets = unit.get("generated_assets") or {}
+            video_clip = assets.get("video_clip") if isinstance(assets, dict) else None
+            if not video_clip:
+                continue
+            try:
+                get_media_storage(project_dir.parent).materialize_project_file(
+                    project_dir, video_clip
+                )
+            except ValueError:
+                pass
+            abs_path = safe_resolve(project_dir, video_clip)
+            if abs_path is None:
+                logger.warning(
+                    "video_clip 不可用（越界或文件不存在），已跳过: %s", video_clip
+                )
+                continue
+
+            spans: list[dict[str, Any]] = []
+            if is_drama:
+                offset = 0.0
+                for shot in unit.get("shots") or []:
+                    if not isinstance(shot, dict):
+                        continue
+                    duration = shot.get("duration_seconds", 4)
+                    text = shot.get("text")
+                    if isinstance(text, str) and text and duration > 0:
+                        spans.append(
+                            {
+                                "offset_seconds": offset,
+                                "duration_seconds": duration,
+                                "text": text,
+                            }
+                        )
+                    offset += max(duration, 0)
+
+            unit_duration = unit.get("duration_seconds")
+            if not isinstance(unit_duration, (int, float)) or unit_duration <= 0:
+                unit_duration = 8
+
+            clips.append(
+                {
+                    "id": unit.get("unit_id", ""),
+                    "duration_seconds": unit_duration,
+                    "video_clip": video_clip,
+                    "abs_path": abs_path,
+                    "subtitle_text": "",
+                    "transition_to_next": unit.get("transition_to_next", "cut"),
+                    "narration_audio_abs": None,
+                }
+            )
+            if is_drama:
+                clips[-1]["subtitle_spans"] = spans
         return clips
 
     def _resolve_canvas_size(self, project: dict, first_video_path: Path | None = None) -> tuple[int, int]:

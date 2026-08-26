@@ -46,7 +46,7 @@ from server.agent_runtime.session_store import SessionMetaStore
 # 在 send_or_create 顶部做积分前置检查时,user_id 不在签名里:目前所有调用都
 # 走同一个 admin user(user_id=1)。简单粗暴地把 user_id=1 写死。如果未来
 # 接入多用户体系,这里需要改成从 Request 提取。
-_RESOLVE_USER_ID = 1
+_RESOLVE_USER_ID = 1  # 修复：仅为兼容保留 fallback，新代码必须用 send_or_create(user_id=...) 传入真实 ID
 
 
 def _resolve_user_id_from_request() -> int:
@@ -272,6 +272,7 @@ class AssistantService:
         images: list["ImageAttachment"] | None = None,
         locale: str = DEFAULT_LOCALE,
         client_key: str | None = None,
+        user_id: int = 0,  # 修复：route 传入真实用户 ID（之前默认 1=admin 全部误扣）
     ) -> dict[str, Any]:
         """Unified send: create new session or send to existing one.
 
@@ -285,7 +286,7 @@ class AssistantService:
         # 才被拒（导致前端 SSE 长期收不到事件,按钮卡在"运行中"状态）。
         # 代理类供应商按 1 积分的最小阈值粗判;余额不足时直接拒绝受理。
         try:
-            await self._preflight_user_credits(_resolve_user_id_from_request())
+            await self._preflight_user_credits(user_id)
         except _PreflightCreditsError as exc:
             raise exc
 
@@ -310,12 +311,16 @@ class AssistantService:
                 locale=locale,
                 user_entry=user_entry,
                 client_key=client_key,
+                user_id=user_id,  # 修复：按真实用户扣费
             )
             return {"status": "accepted", "session_id": session_id, "entry": entry}
         else:
             # New session
             if not client_key:
-                return await self._create_new_session(project_name, content, images, locale, client_key)
+                return await self._create_new_session(
+                    project_name, content, images, locale, client_key,
+                    user_id=user_id,  # 修复
+                )
 
             existing = await self._find_accepted_new_session(client_key)
             if existing is not None:
@@ -329,7 +334,10 @@ class AssistantService:
                 existing = await self._find_accepted_new_session(client_key)
                 if existing is not None:
                     return existing
-                result = await self._create_new_session(project_name, content, images, locale, client_key)
+                result = await self._create_new_session(
+                    project_name, content, images, locale, client_key,
+                    user_id=user_id,  # 修复
+                )
                 self._record_new_session_client_key(client_key, result["session_id"])
                 return result
 
@@ -383,6 +391,7 @@ class AssistantService:
         images: list["ImageAttachment"] | None,
         locale: str,
         client_key: str | None,
+        user_id: int = 0,  # 修复：service.py 传入真实用户 ID
     ) -> dict[str, Any]:
         """实际创建新会话并投递首条消息，不涉及 client_key 幂等映射记账。"""
         text, sdk_prompt, echo_blocks = self._prepare_prompt(content, images)
@@ -396,6 +405,7 @@ class AssistantService:
             locale=locale,
             user_entry=user_entry,
             client_key=client_key,
+            user_id=user_id,  # 修复
         )
         managed = self.session_manager.sessions.get(new_sdk_session_id)
         entry = managed.initial_user_log_entry if managed is not None else None

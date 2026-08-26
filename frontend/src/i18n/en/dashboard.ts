@@ -1199,6 +1199,7 @@ export default {
   'tool_call_question_label': 'Question',
   // Timeline typed entries (interrupt / AskUserQuestion answer)
   'chat_interrupt_notice': 'Session interrupted by user',
+  'chat_subagent_watchdog_killed': 'Subagent killed by watchdog (no update for ${age}s, threshold ${threshold}s)',
   'chat_question_answer_label': 'Answered',
   // MCP tool display names (single source of truth: ARCREEL_MCP_TOOL_IDS in
   // server/agent_runtime/sdk_tools/__init__.py; tests/test_frontend_mcp_tool_i18n.py

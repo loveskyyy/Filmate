@@ -28,6 +28,7 @@ export interface ContentBlock {
     | "skill_invocation"
     | "task_progress"
     | "interrupt_notice"
+    | "watchdog_killed"
     | "question_answer"
     | "image";
   text?: string;

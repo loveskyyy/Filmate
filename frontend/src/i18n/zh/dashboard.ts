@@ -1200,6 +1200,7 @@ export default {
   'tool_call_question_label': '提问',
   // 时间线 typed 条目（interrupt / AskUserQuestion 答复）
   'chat_interrupt_notice': '用户中断了会话',
+  'chat_subagent_watchdog_killed': '子 Agent 被系统看门狗终止（无更新 ${age} 秒，阈值 ${threshold} 秒）',
   'chat_question_answer_label': '已答复',
   // MCP tool display names (single source of truth: ARCREEL_MCP_TOOL_IDS in
   // server/agent_runtime/sdk_tools/__init__.py; tests/test_frontend_mcp_tool_i18n.py

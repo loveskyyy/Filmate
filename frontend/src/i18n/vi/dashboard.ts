@@ -1313,6 +1313,7 @@ export default {
   'task_hud_title': 'Task Radar',
   'toggle_options': 'Bật/tắt tùy chọn',
   'chat_interrupt_notice': 'Người dùng đã ngắt phiên trò chuyện',
+  'chat_subagent_watchdog_killed': 'Sub-agent bị watchdog kết thúc (không cập nhật ${age}s, ngưỡng ${threshold}s)',
   'chat_question_answer_label': 'Đã trả lời',
   'tool_call_error_label': 'Thất bại',
   'tool_call_input_label': 'Đầu vào',

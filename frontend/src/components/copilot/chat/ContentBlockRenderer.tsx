@@ -101,6 +101,9 @@ export function ContentBlockRenderer({ block, index, streaming }: ContentBlockRe
     case "interrupt_notice":
       return <InterruptNoticeBlock key={block.id ?? `block-${index}`} />;
 
+    case "watchdog_killed":
+      return <WatchdogKilledBlock key={block.id ?? `block-${index}`} data={(block as { data?: WatchdogKilledData }).data} />;
+
     case "question_answer":
       return <QuestionAnswerBlock key={block.id ?? `block-${index}`} block={block} />;
 
@@ -167,6 +170,30 @@ function InterruptNoticeBlock() {
     </div>
   );
 }
+
+function WatchdogKilledBlock({ data }: Readonly<{ data?: WatchdogKilledData }>) {
+  const { t } = useTranslation("dashboard");
+  const age = data?.age_seconds;
+  const threshold = data?.threshold_seconds;
+  return (
+    <div
+      className="my-1 flex items-center gap-1.5 text-[11.5px]"
+      style={{ color: "var(--color-warn)" }}
+      title={data?.reason}
+    >
+      <span>{"!"}</span>
+      <span>{t("chat_subagent_watchdog_killed", { age, threshold })}</span>
+    </div>
+  );
+}
+
+type WatchdogKilledData = {
+  reason?: string;
+  age_seconds?: number;
+  threshold_seconds?: number;
+  killed_at?: number;
+};
+
 
 // AskUserQuestion 答复：结构化答案逐条呈现（问题 → 所选选项），
 // 无结构化答案时回退展示原始结果文本。

@@ -84,6 +84,7 @@ async def send_message(
             images=req.images,
             locale=get_locale(request),
             client_key=req.client_key,
+            user_id=_user.id,  # 修复：从 FastAPI 依赖注入取真实用户 ID
         )
         return result
     except SessionCapacityError as exc:
